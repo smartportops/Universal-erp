@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronLeft, ChevronRight, Columns3, Download, Eye, EyeOff, GripVertical, MoreHorizontal, SquareCheck, X } from "lucide-react";
 import { cn } from "@/lib/format";
 import { useTx } from "@/lib/i18n-client";
@@ -267,30 +268,80 @@ export function ListTable({
   );
 }
 
-function useClickOutside(open: boolean, close: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
+/** Menu that floats above panels with overflow-hidden: rendered in a portal, pinned to its trigger. */
+function Floating({
+  open,
+  anchor,
+  align,
+  width,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  anchor: React.RefObject<HTMLElement | null>;
+  align: "left" | "right";
+  width: number;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    function place() {
+      const rect = anchor.current?.getBoundingClientRect();
+      if (!rect) return;
+      const left = align === "right" ? Math.max(8, rect.right - width) : Math.min(rect.left, window.innerWidth - width - 8);
+      setBox({ top: rect.bottom + 6, left });
+    }
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, anchor, align, width]);
+
   useEffect(() => {
     if (!open) return;
     function handle(event: MouseEvent) {
-      if (!ref.current?.contains(event.target as Node)) close();
+      const target = event.target as Node;
+      if (panel.current?.contains(target) || anchor.current?.contains(target)) return;
+      onClose();
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
     }
     window.addEventListener("mousedown", handle);
-    return () => window.removeEventListener("mousedown", handle);
-  }, [open, close]);
-  return ref;
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("mousedown", handle);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [open, anchor, onClose]);
+
+  if (!open || !box) return null;
+  return createPortal(
+    <div ref={panel} style={{ position: "fixed", top: box.top, left: box.left, width }} className="z-50 overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-lg)] ring-1 ring-line">
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 function ActionMenu({ actions, disabled, onPick }: { actions: BulkAction[]; disabled: boolean; onPick: (action: BulkAction) => void }) {
   const tx = useTx();
   const [open, setOpen] = useState(false);
-  const ref = useClickOutside(open, () => setOpen(false));
+  const trigger = useRef<HTMLButtonElement>(null);
   return (
-    <div className="relative" ref={ref}>
-      <button type="button" className={buttonClass("primary", "sm")} disabled={disabled} onClick={() => setOpen((value) => !value)} aria-label={tx("Actions")}>
+    <>
+      <button ref={trigger} type="button" className={buttonClass("primary", "sm")} disabled={disabled} onClick={() => setOpen((value) => !value)} aria-label={tx("Actions")}>
         <MoreHorizontal size={14} /> {tx("Actions")}
       </button>
-      {open ? (
-        <div className="absolute left-0 z-30 mt-1.5 w-60 overflow-hidden rounded-xl bg-surface py-1 shadow-[var(--shadow-lg)] ring-1 ring-line">
+      <Floating open={open} anchor={trigger} align="left" width={240} onClose={() => setOpen(false)}>
+        <div className="py-1">
           {actions.map((action) => (
             <button
               key={action.key}
@@ -306,8 +357,8 @@ function ActionMenu({ actions, disabled, onPick }: { actions: BulkAction[]; disa
             </button>
           ))}
         </div>
-      ) : null}
-    </div>
+      </Floating>
+    </>
   );
 }
 
@@ -315,7 +366,7 @@ function ColumnsMenu({ id, columns, prefs }: { id: string; columns: ListColumn[]
   const tx = useTx();
   const [open, setOpen] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
-  const ref = useClickOutside(open, () => setOpen(false));
+  const trigger = useRef<HTMLButtonElement>(null);
   const order = useMemo(() => {
     const base = prefs?.order?.length ? prefs.order : columns.map((column) => column.key);
     const known = new Set(columns.map((column) => column.key));
@@ -345,12 +396,12 @@ function ColumnsMenu({ id, columns, prefs }: { id: string; columns: ListColumn[]
   }
 
   return (
-    <div className="relative" ref={ref}>
-      <button type="button" className={buttonClass("secondary", "sm")} onClick={() => setOpen((value) => !value)}>
+    <>
+      <button ref={trigger} type="button" className={buttonClass("secondary", "sm")} onClick={() => setOpen((value) => !value)}>
         <Columns3 size={13} /> {tx("Columns")}
       </button>
-      {open ? (
-        <div className="absolute right-0 z-30 mt-1.5 w-64 overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-lg)] ring-1 ring-line">
+      <Floating open={open} anchor={trigger} align="right" width={256} onClose={() => setOpen(false)}>
+        <div>
           <div className="flex items-center justify-between px-3 pb-1 pt-2.5 text-[12px] text-muted">
             <span>{tx("Drag to reorder")}</span>
             {prefs ? <button type="button" className="text-accent hover:underline" onClick={() => writePrefs(id, null)}>{tx("Reset")}</button> : null}
@@ -384,7 +435,7 @@ function ColumnsMenu({ id, columns, prefs }: { id: string; columns: ListColumn[]
             })}
           </ul>
         </div>
-      ) : null}
-    </div>
+      </Floating>
+    </>
   );
 }
