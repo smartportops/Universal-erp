@@ -496,13 +496,21 @@ model Customer {
   code           String
   name           String
   email          String   @default("")
+  phone          String   @default("")
+  company        String   @default("")
   type           String
+  street         String   @default("")
+  addressLine2   String   @default("")
+  postalCode     String   @default("")
   city           String   @default("")
   country        String   @default("DE")
   paymentTerms   String   @default("Sofort")
   vatId          String   @default("")
+  taxNumber      String   @default("")
+  notes          String   @default("")
   status         String   @default("active")
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salesOrders    SalesOrder[]
   invoices       Invoice[]

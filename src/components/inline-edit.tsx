@@ -183,7 +183,7 @@ function Editable({
           setDraft(shown);
           setEditing(true);
         }}
-        className={cn(base, "block cursor-text text-left transition-colors hover:bg-black/[0.04]", align === "right" && "text-right", !shown && "text-faint", pending && "opacity-60", saved && "bg-ok-soft")}
+        className={cn(base, "block cursor-text text-left transition-colors hover:bg-black/[0.04]", type === "textarea" && "whitespace-pre-wrap", align === "right" && "text-right", !shown && "text-faint", pending && "opacity-60", saved && "bg-ok-soft")}
       >
         {shown === value && display ? display : shown || hint}
       </button>

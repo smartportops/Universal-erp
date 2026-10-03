@@ -68,7 +68,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
                 {edit("notes", supplier.notes, "textarea")}
               </div>
             </Panel>
-            <EntityFields entityId={supplier.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} />
+            <EntityFields entityType="supplier" entityId={supplier.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} returnTo={`/suppliers/${supplier.id}`} />
           </>
         }
       >

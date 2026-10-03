@@ -97,7 +97,7 @@ export default async function PurchaseOrderPage({ params, searchParams }: { para
                 <InlineEdit entity="purchase_order" id={order.id} field="notes" type="textarea" value={order.notes} disabled={!writable} placeholder={tx("Note for purchasing")} />
               </div>
             </Panel>
-            <EntityFields entityId={order.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} />
+            <EntityFields entityType="purchase_order" entityId={order.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} returnTo={`/purchase-orders/${order.id}`} />
           </>
         }
       >

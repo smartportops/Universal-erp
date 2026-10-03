@@ -24,7 +24,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       where: {
         organizationId: session.organization.id,
         ...(type ? { type } : {}),
-        ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q } }, { code: { contains: q } }, { city: { contains: q } }] } : {}),
+        ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { company: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { code: { contains: q } }, { city: { contains: q, mode: "insensitive" } }] } : {}),
       },
       include: { salesOrders: { select: { id: true } }, invoices: { select: { netCents: true, status: true } } },
       orderBy: { name: "asc" },
@@ -43,7 +43,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       <PageIntro title={tx("Customers")} actions={can(session.role, "sales.write") ? <Button href="/customers/new">{tx("Create customer")}</Button> : undefined} />
       <Banner error={one(query.error)} notice={one(query.notice)} />
       <Tabs items={[tab("", tx("All")), tab("b2c", tx("Consumers")), tab("b2b", tx("Businesses"))]} />
-      <Filters action="/customers" q={q} placeholder={tx("Name, email, city")} hidden={{ type }} />
+      <Filters action="/customers" q={q} placeholder={tx("Name, company, email, city")} hidden={{ type }} />
       <Panel flush>
         <DataTable
           columns={[{ label: tx("Customer") }, { label: tx("Type") }, { label: tx("City") }, { label: tx("Orders"), align: "right" }, { label: tx("Revenue"), align: "right" }]}

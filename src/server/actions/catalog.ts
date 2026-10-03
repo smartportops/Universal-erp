@@ -290,46 +290,84 @@ export async function updateSupplier(formData: FormData) {
   });
 }
 
-export async function createCustomer(formData: FormData) {
-  await runAction("/customers/new", async () => {
-    const session = await requirePermission("sales.write");
-    const name = String(formData.get("name") || "").trim();
-    if (!name) throw new Error("Name is missing.");
-    const existing = await prisma.customer.findMany({ where: { organizationId: session.organization.id }, select: { code: true } });
-    const customer = await prisma.customer.create({
-      data: {
-        organizationId: session.organization.id,
-        code: await nextCode("KD-", existing.map((row) => row.code), 4),
-        name,
-        email: String(formData.get("email") || "").trim(),
-        type: String(formData.get("type") || "b2c"),
-        city: String(formData.get("city") || "").trim(),
-        country: String(formData.get("country") || "DE").trim(),
-        paymentTerms: String(formData.get("paymentTerms") || "Immediate").trim(),
-        vatId: String(formData.get("vatId") || "").trim(),
-      },
-    });
-    refresh();
-    redirect(`/customers/${customer.id}?notice=` + encodeURIComponent("Customer created."));
-  });
+type CustomerField = "name" | "email" | "phone" | "company" | "type" | "street" | "addressLine2" | "postalCode" | "city" | "country" | "paymentTerms" | "vatId" | "taxNumber" | "notes";
+
+function customerData(values: Record<string, string>) {
+  const pick = (key: CustomerField) => String(values[key] ?? "").trim();
+  const name = pick("name");
+  if (!name) throw new Error("Name is missing.");
+  const type = pick("type") || "b2c";
+  if (!["b2c", "b2b"].includes(type)) throw new Error("Invalid value.");
+  return {
+    name,
+    email: pick("email"),
+    phone: pick("phone"),
+    company: pick("company"),
+    type,
+    street: pick("street"),
+    addressLine2: pick("addressLine2"),
+    postalCode: pick("postalCode"),
+    city: pick("city"),
+    country: pick("country") || "DE",
+    paymentTerms: pick("paymentTerms"),
+    vatId: pick("vatId"),
+    taxNumber: pick("taxNumber"),
+    notes: pick("notes"),
+  };
 }
 
-export async function updateCustomer(formData: FormData) {
-  const id = String(formData.get("id") || "");
-  await runAction(`/customers/${id}`, async () => {
+export async function createCustomer(values: Record<string, string>): Promise<{ error: string } | undefined> {
+  let id = "";
+  try {
     const session = await requirePermission("sales.write");
-    await prisma.customer.updateMany({
-      where: { id, organizationId: session.organization.id },
-      data: {
-        email: String(formData.get("email") || "").trim(),
-        city: String(formData.get("city") || "").trim(),
-        paymentTerms: String(formData.get("paymentTerms") || "").trim(),
-        vatId: String(formData.get("vatId") || "").trim(),
-      },
+    const data = customerData(values);
+    const existing = await prisma.customer.findMany({ where: { organizationId: session.organization.id }, select: { code: true } });
+    const customer = await prisma.$transaction(async (tx) => {
+      const created = await tx.customer.create({
+        data: { organizationId: session.organization.id, code: await nextCode("KD-", existing.map((row) => row.code), 4), ...data },
+      });
+      await record(tx, {
+        organizationId: session.organization.id,
+        actorId: session.user.id,
+        type: "customer.created",
+        entityType: "customer",
+        entityId: created.id,
+        summary: "Customer created.",
+      });
+      return created;
+    });
+    id = customer.id;
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: messageFor(error) };
+  }
+  refresh();
+  redirect(`/customers/${id}?notice=` + encodeURIComponent("Customer created."));
+}
+
+export async function saveCustomer(customerId: string, values: Record<string, string>): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const session = await requirePermission("sales.write");
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, organizationId: session.organization.id } });
+    if (!customer) return { ok: false, error: "Customer not found." };
+    const data = customerData(values);
+    await prisma.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id: customer.id }, data });
+      await record(tx, {
+        organizationId: session.organization.id,
+        actorId: session.user.id,
+        type: "customer.updated",
+        entityType: "customer",
+        entityId: customer.id,
+        summary: "Customer saved.",
+      });
     });
     refresh();
-    redirect(`/customers/${id}?notice=` + encodeURIComponent("Saved."));
-  });
+    return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false, error: messageFor(error) };
+  }
 }
 
 export async function createPurchaseOrder(formData: FormData) {

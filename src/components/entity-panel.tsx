@@ -3,6 +3,7 @@ import { Paperclip } from "lucide-react";
 import { formatWhen } from "@/lib/format";
 import { addComment } from "@/server/actions/platform";
 import { InlineCustomField } from "@/components/inline-edit";
+import { FileAttach } from "@/components/file-attach";
 import { translator } from "@/lib/i18n-server";
 import { Panel, Properties } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -67,30 +68,53 @@ export async function ActivityFeed({
   );
 }
 
-export async function EntityFields({ entityId, fields, files, canEdit }: { entityId: string; fields: FieldItem[]; files: FileItem[]; canEdit: boolean }) {
+export async function EntityFields({
+  entityType,
+  entityId,
+  fields,
+  files,
+  canEdit,
+  returnTo,
+}: {
+  entityType: string;
+  entityId: string;
+  fields: FieldItem[];
+  files: FileItem[];
+  canEdit: boolean;
+  returnTo: string;
+}) {
   const tx = await translator();
-  if (!fields.length && !files.length) return null;
+  const showFiles = files.length > 0 || canEdit;
+  if (!fields.length && !showFiles) return null;
   return (
-    <Panel title={tx("More details")}>
+    <>
       {fields.length ? (
-        <Properties
-          items={fields.map((field) => ({
-            label: field.label,
-            value: <InlineCustomField definitionId={field.definitionId} entityId={entityId} value={field.value} disabled={!canEdit} />,
-          }))}
-        />
+        <Panel title={tx("More details")}>
+          <Properties
+            items={fields.map((field) => ({
+              label: field.label,
+              value: <InlineCustomField definitionId={field.definitionId} entityId={entityId} value={field.value} disabled={!canEdit} />,
+            }))}
+          />
+        </Panel>
       ) : null}
-      {files.length ? (
-        <ul className="mt-3 space-y-1 border-t border-line pt-3 text-[13px]">
-          {files.map((file) => (
-            <li key={file.id}>
-              <Link href={`/api/files/${file.id}`} className="inline-flex items-center gap-1.5 text-accent hover:underline">
-                <Paperclip size={13} /> {file.filename}
-              </Link>
-            </li>
-          ))}
-        </ul>
+      {showFiles ? (
+        <Panel title={tx("Files")} action={canEdit ? <FileAttach entityType={entityType} entityId={entityId} returnTo={returnTo} /> : undefined}>
+          {files.length ? (
+            <ul className="space-y-1 text-[13px]">
+              {files.map((file) => (
+                <li key={file.id}>
+                  <Link href={`/api/files/${file.id}`} className="inline-flex items-center gap-1.5 text-accent hover:underline">
+                    <Paperclip size={13} /> {file.filename}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[13px] text-muted">{tx("No files yet. PDFs, images and documents up to 5 MB.")}</p>
+          )}
+        </Panel>
       ) : null}
-    </Panel>
+    </>
   );
 }

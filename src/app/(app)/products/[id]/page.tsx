@@ -178,7 +178,7 @@ export default async function ProductPage({
                 <DraftToggle k="product:trackSerialsOut" label={tx("Serial numbers on dispatch")} hint={tx("Ask for serials when shipping")} disabled={!writable} />
               </div>
             </Panel>
-            <EntityFields entityId={product.id} fields={extras.fields} files={extras.files} canEdit={writable} />
+            <EntityFields entityType="product" entityId={product.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} returnTo={`/products/${product.id}`} />
           </>
         }
       >

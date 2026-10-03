@@ -188,7 +188,7 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
                 </ul>
               </Panel>
             ) : null}
-            <EntityFields entityId={order.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} />
+            <EntityFields entityType="sales_order" entityId={order.id} fields={extras.fields} files={extras.files} canEdit={can(session.role, "comments.write")} returnTo={`/sales-orders/${order.id}`} />
           </>
         }
       >
