@@ -47,7 +47,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
         back={{ href: "/suppliers", label: tx("Suppliers") }}
         thumb={<Thumb label={supplier.name} size={44} />}
         eyebrow={supplier.code}
-        title={<InlineEdit entity="supplier" id={supplier.id} field="name" value={supplier.name} disabled={!writable} textClassName="text-[22px] font-semibold tracking-[-0.02em]" />}
+        title={<InlineEdit entity="supplier" id={supplier.id} field="name" value={supplier.name} disabled={!writable} plain textClassName="text-[22px] font-semibold tracking-[-0.02em]" />}
         actions={writable ? <Button href={`/purchase-orders/new?supplier=${supplier.id}`}>{tx("New purchase order")}</Button> : null}
       />
       <Banner error={one(query.error)} notice={one(query.notice)} />

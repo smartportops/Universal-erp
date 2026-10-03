@@ -68,6 +68,7 @@ export async function CustomerEditor({
               disabled={!writable}
               placeholder={tx("Customer name")}
               autoFocus={creating}
+              plain
               textClassName="text-[22px] font-semibold tracking-[-0.02em]"
               className={creating ? "min-w-[320px]" : undefined}
             />

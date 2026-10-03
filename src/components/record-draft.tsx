@@ -113,6 +113,7 @@ export function RecordField({
   className?: string;
   textClassName?: string;
   autoFocus?: boolean;
+  plain?: boolean;
 }) {
   const draft = useDraft();
   const value = draft.values[k] ?? "";

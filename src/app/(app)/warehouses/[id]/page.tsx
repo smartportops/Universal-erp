@@ -49,7 +49,7 @@ export default async function WarehousePage({ params, searchParams }: { params: 
       <PageIntro
         back={{ href: "/warehouses", label: tx("Warehouses") }}
         eyebrow={warehouse.code}
-        title={<InlineEdit entity="warehouse" id={warehouse.id} field="name" value={warehouse.name} disabled={!writable} textClassName="text-[22px] font-semibold tracking-[-0.02em]" />}
+        title={<InlineEdit entity="warehouse" id={warehouse.id} field="name" value={warehouse.name} disabled={!writable} plain textClassName="text-[22px] font-semibold tracking-[-0.02em]" />}
         badges={warehouse.isDefault ? <Pill tone="info">{tx("Default")}</Pill> : null}
       />
       <Banner error={one(query.error)} notice={one(query.notice)} />

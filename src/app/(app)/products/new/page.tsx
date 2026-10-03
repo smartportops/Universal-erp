@@ -50,7 +50,7 @@ export default async function NewProductPage() {
       <div>
         <PageIntro
           back={{ href: "/products", label: tx("Products") }}
-          title={<DraftField k="product:name" entity="product" id={variantId} field="name" placeholder="Product title" autoFocus textClassName="text-[22px] font-semibold tracking-[-0.02em]" className="min-w-[320px]" />}
+          title={<DraftField k="product:name" entity="product" id={variantId} field="name" placeholder="Product title" autoFocus plain textClassName="text-[22px] font-semibold tracking-[-0.02em]" className="min-w-[320px]" />}
           badges={<DraftStatus map={txMap(productStatus, tx)} />}
           actions={<SaveProductButton />}
         />

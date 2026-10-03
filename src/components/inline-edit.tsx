@@ -26,6 +26,8 @@ type Props = {
   autoFocus?: boolean;
   /** When set, the value stays local and is not written until the caller saves. */
   onCommit?: (value: string) => void;
+  /** Edit in place as plain text: no field background, ring, or hover wash. */
+  plain?: boolean;
 };
 
 export function InlineEdit(props: Props) {
@@ -59,6 +61,7 @@ function Editable({
   textClassName,
   autoFocus,
   onCommit,
+  plain,
   save,
 }: Props & { save: (raw: string) => Promise<UpdateResult> }) {
   const router = useRouter();
@@ -162,7 +165,7 @@ function Editable({
           commit(draft);
         }
       },
-      className: cn(base, "block bg-surface outline-none ring-2 ring-accent/30"),
+      className: cn(base, "block outline-none", plain ? "bg-transparent caret-ink" : "bg-surface ring-2 ring-accent/30"),
     };
     return (
       <span className={cn("block", className)}>
@@ -183,7 +186,7 @@ function Editable({
           setDraft(shown);
           setEditing(true);
         }}
-        className={cn(base, "block cursor-text text-left transition-colors hover:bg-black/[0.04]", type === "textarea" && "whitespace-pre-wrap", align === "right" && "text-right", !shown && "text-faint", pending && "opacity-60", saved && "bg-ok-soft")}
+        className={cn(base, "block cursor-text text-left transition-colors", plain ? "hover:bg-transparent" : "hover:bg-black/[0.04]", type === "textarea" && "whitespace-pre-wrap", align === "right" && "text-right", !shown && "text-faint", pending && "opacity-60", saved && !plain && "bg-ok-soft")}
       >
         {shown === value && display ? display : shown || hint}
       </button>

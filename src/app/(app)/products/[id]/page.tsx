@@ -97,7 +97,7 @@ export default async function ProductPage({
     <div>
       <PageIntro
         back={{ href: "/products", label: tx("Products") }}
-        title={<DraftField k="product:name" entity="product" id={product.id} field="name" placeholder="Product title" disabled={!writable} textClassName="text-[22px] font-semibold tracking-[-0.02em]" className="min-w-[320px]" />}
+        title={<DraftField k="product:name" entity="product" id={product.id} field="name" placeholder="Product title" disabled={!writable} plain textClassName="text-[22px] font-semibold tracking-[-0.02em]" className="min-w-[320px]" />}
         badges={<DraftStatus map={txMap(productStatus, tx)} />}
         actions={writable ? <SaveProductButton /> : undefined}
       />
