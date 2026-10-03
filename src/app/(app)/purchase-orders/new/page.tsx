@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -53,6 +54,7 @@ export default async function NewPurchasePage({ searchParams }: { searchParams: 
       <Banner error={one(query.error)} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Panel title={tx("Lines")}>
+          {variants.length === 0 ? <p className="mb-3 text-[13px] text-muted">{tx("No products yet.")} <Link href="/products/new" className="text-ink underline-offset-2 hover:underline">{tx("Create product")}</Link></p> : null}
           <LineEditor
             amountLabel={tx("Unit cost")}
             initial={suggested}
@@ -69,9 +71,13 @@ export default async function NewPurchasePage({ searchParams }: { searchParams: 
         <Panel title={tx("Purchase order")}>
           <div className="space-y-4">
             <Field label={tx("Supplier")}>
-              <select name="supplierId" defaultValue={supplier?.id} className={fieldClass}>
-                {suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
+              {suppliers.length === 0 ? (
+                <p className="text-[13px] text-muted">{tx("No suppliers yet.")} <Link href="/suppliers/new" className="text-ink underline-offset-2 hover:underline">{tx("Create supplier")}</Link></p>
+              ) : (
+                <select name="supplierId" defaultValue={supplier?.id} className={fieldClass}>
+                  {suppliers.map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.name} · ${item.code}` : item.name}</option>)}
+                </select>
+              )}
             </Field>
             <Field label={tx("Expected on")}>
               <input name="expectedAt" type="date" defaultValue={toDateInput(daysFromToday(supplier?.leadTimeDays ?? 14))} className={fieldClass} />

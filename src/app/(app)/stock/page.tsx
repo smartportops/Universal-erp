@@ -2,12 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { can } from "@/lib/permissions";
 import { formatWhen, one, signedQty } from "@/lib/format";
 import { movementTypes } from "@/lib/labels";
 import { getLocale, translator } from "@/lib/i18n-server";
 import { Filters } from "@/components/filters";
-import { Banner, Button, DataTable, PageIntro, Panel } from "@/components/ui";
+import { Banner, DataTable, PageIntro, Panel } from "@/components/ui";
 
 export async function generateMetadata() {
   const tx = await translator();
@@ -30,7 +29,6 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     if (rawQ) next.set("q", rawQ);
     redirect(`/warehouses?${next.toString()}`);
   }
-  const writable = can(session.role, "stock.write");
   const movements = await prisma.stockMovement.findMany({
     where: {
       organizationId: session.organization.id,
@@ -46,14 +44,6 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       <PageIntro
         title={tx("Stock movements")}
         description={tx("Goods receipt, shipping, transfer and counting. On hand is the sum of these movements.")}
-        actions={
-          writable ? (
-            <>
-              <Button href="/stock/transfer" variant="secondary">{tx("Transfer")}</Button>
-              <Button href="/stock/adjust">{tx("Count stock")}</Button>
-            </>
-          ) : undefined
-        }
       />
       <Banner error={one(query.error)} notice={one(query.notice)} />
       <Filters action="/stock" q={rawQ} placeholder={tx("SKU, product or document")} />

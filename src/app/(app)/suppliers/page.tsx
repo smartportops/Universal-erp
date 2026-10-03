@@ -19,7 +19,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const query = await searchParams;
   const q = one(query.q);
   const suppliers = await prisma.supplier.findMany({
-    where: { organizationId: session.organization.id, ...(q ? { OR: [{ name: { contains: q } }, { code: { contains: q } }] } : {}) },
+    where: { organizationId: session.organization.id, ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { code: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { customerNumber: { contains: q, mode: "insensitive" } }] } : {}) },
     include: { purchaseOrders: { select: { status: true } } },
     orderBy: { name: "asc" },
   });

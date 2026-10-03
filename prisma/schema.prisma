@@ -474,20 +474,58 @@ model Supplier {
   code           String
   name           String
   email          String   @default("")
+  phone          String   @default("")
+  website        String   @default("")
+  street         String   @default("")
+  postalCode     String   @default("")
+  city           String   @default("")
   country        String   @default("DE")
+  language       String   @default("de")
   currency       String   @default("EUR")
+  customerNumber String   @default("")
+  vatId          String   @default("")
+  taxNumber      String   @default("")
   leadTimeDays   Int      @default(14)
   paymentTerms   String   @default("30 Tage")
   status         String   @default("active")
   notes          String   @default("")
   createdAt      DateTime @default(now())
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedAt      DateTime @default(now()) @updatedAt
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts       SupplierContact[]
+  bankAccounts   SupplierBankAccount[]
   variants       ProductVariant[]
   purchaseOrders PurchaseOrder[]
   productLinks   ProductSupplier[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
+}
+
+model SupplierContact {
+  id         String   @id @default(cuid())
+  supplierId String
+  name       String
+  role       String   @default("")
+  email      String   @default("")
+  phone      String   @default("")
+  position   Int      @default(0)
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+}
+
+model SupplierBankAccount {
+  id            String   @id @default(cuid())
+  supplierId    String
+  accountHolder String   @default("")
+  iban          String   @default("")
+  bic           String   @default("")
+  bankName      String   @default("")
+  position      Int      @default(0)
+  supplier      Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
 }
 
 model Customer {

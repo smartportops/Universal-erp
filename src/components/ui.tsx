@@ -58,10 +58,10 @@ const buttonStyles = {
 
 export type ButtonVariant = keyof typeof buttonStyles;
 
-export function buttonClass(variant: ButtonVariant = "primary", size: "sm" | "md" = "md") {
+export function buttonClass(variant: ButtonVariant = "primary", size: "sm" | "md" | "lg" = "md") {
   return cn(
     "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
-    size === "sm" ? "h-7 px-2.5 text-[12px]" : "h-8 px-3 text-[13px]",
+    size === "sm" ? "h-7 px-2.5 text-[12px]" : size === "lg" ? "h-11 px-4 text-[14px]" : "h-8 px-3 text-[13px]",
     buttonStyles[variant],
   );
 }
@@ -76,7 +76,7 @@ export function Button({
 }: {
   href?: string;
   variant?: ButtonVariant;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
   children: React.ReactNode;
   className?: string;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
@@ -177,7 +177,7 @@ export function Properties({ items }: { items: { label: string; value: React.Rea
       {items
         .filter((item) => !item.hidden)
         .map((item) => (
-          <div key={item.label} className="grid min-h-8 grid-cols-[104px_minmax(0,1fr)] items-center gap-3">
+          <div key={item.label} className="grid min-h-8 grid-cols-[9.25rem_minmax(0,1fr)] items-center gap-3">
             <dt className="text-[13px] text-muted">{item.label}</dt>
             <dd className="min-w-0 text-[13px]">{item.value}</dd>
           </div>

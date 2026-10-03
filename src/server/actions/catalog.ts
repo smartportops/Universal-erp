@@ -4,7 +4,7 @@ import { randomBytes } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { prisma, type Tx } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { parseMoneyToCents } from "@/lib/format";
 import { cleanHtml } from "@/lib/html";
@@ -250,44 +250,153 @@ export async function archiveProducts(formData: FormData) {
   });
 }
 
-export async function createSupplier(formData: FormData) {
-  await runAction("/suppliers/new", async () => {
-    const session = await requirePermission("purchasing.write");
-    const name = String(formData.get("name") || "").trim();
-    if (!name) throw new Error("Name is missing.");
-    const existing = await prisma.supplier.findMany({ where: { organizationId: session.organization.id }, select: { code: true } });
-    const supplier = await prisma.supplier.create({
-      data: {
-        organizationId: session.organization.id,
-        code: await nextCode("LF-", existing.map((row) => row.code), 3),
-        name,
-        email: String(formData.get("email") || "").trim(),
-        country: String(formData.get("country") || "DE").trim(),
-        leadTimeDays: Number(formData.get("leadTimeDays") || 14),
-        paymentTerms: String(formData.get("paymentTerms") || "30 days").trim(),
-      },
-    });
-    refresh();
-    redirect(`/suppliers/${supplier.id}?notice=` + encodeURIComponent("Supplier created."));
-  });
+export type SupplierContactInput = { id: string; name: string; role: string; email: string; phone: string };
+export type SupplierBankInput = { id: string; accountHolder: string; iban: string; bic: string; bankName: string };
+
+export type SupplierPayload = {
+  name: string;
+  code: string;
+  customerNumber: string;
+  email: string;
+  phone: string;
+  website: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  country: string;
+  language: string;
+  currency: string;
+  vatId: string;
+  taxNumber: string;
+  notes: string;
+  leadTimeDays: string;
+  paymentTerms: string;
+  contacts: SupplierContactInput[];
+  bankAccounts: SupplierBankInput[];
+};
+
+function supplierData(payload: SupplierPayload) {
+  const pick = (value: string) => value.trim();
+  const name = pick(payload.name);
+  if (!name) throw new Error("Name is missing.");
+  const rawDays = String(payload.leadTimeDays ?? "").trim().replace(",", ".");
+  const parsedDays = rawDays === "" ? 14 : Number(rawDays);
+  return {
+    name,
+    code: pick(payload.code),
+    customerNumber: pick(payload.customerNumber),
+    email: pick(payload.email),
+    phone: pick(payload.phone),
+    website: pick(payload.website),
+    street: pick(payload.street),
+    postalCode: pick(payload.postalCode),
+    city: pick(payload.city),
+    country: pick(payload.country) || "DE",
+    language: pick(payload.language) || "de",
+    currency: pick(payload.currency) || "EUR",
+    vatId: pick(payload.vatId),
+    taxNumber: pick(payload.taxNumber),
+    notes: pick(payload.notes),
+    leadTimeDays: Number.isFinite(parsedDays) && parsedDays >= 0 ? Math.round(parsedDays) : 14,
+    paymentTerms: pick(payload.paymentTerms),
+  };
 }
 
-export async function updateSupplier(formData: FormData) {
-  const id = String(formData.get("id") || "");
-  await runAction(`/suppliers/${id}`, async () => {
+function filledContacts(rows: SupplierContactInput[]) {
+  return rows
+    .map((row) => ({
+      name: row.name.trim(),
+      role: row.role.trim(),
+      email: row.email.trim(),
+      phone: row.phone.trim(),
+    }))
+    .filter((row) => row.name || row.role || row.email || row.phone)
+    .map((row, position) => {
+      if (!row.name) throw new Error("A contact needs a name.");
+      return { ...row, position };
+    });
+}
+
+function filledBanks(rows: SupplierBankInput[]) {
+  return rows
+    .map((row) => ({
+      accountHolder: row.accountHolder.trim(),
+      iban: row.iban.trim(),
+      bic: row.bic.trim(),
+      bankName: row.bankName.trim(),
+    }))
+    .filter((row) => row.accountHolder || row.iban || row.bic || row.bankName)
+    .map((row, position) => {
+      if (!row.iban) throw new Error("A bank account needs an IBAN.");
+      return { ...row, position };
+    });
+}
+
+async function writeSupplierRelations(tx: Tx, supplierId: string, payload: SupplierPayload) {
+  const contacts = filledContacts(payload.contacts);
+  const banks = filledBanks(payload.bankAccounts);
+  await tx.supplierContact.deleteMany({ where: { supplierId } });
+  await tx.supplierBankAccount.deleteMany({ where: { supplierId } });
+  if (contacts.length) await tx.supplierContact.createMany({ data: contacts.map((row) => ({ supplierId, ...row })) });
+  if (banks.length) await tx.supplierBankAccount.createMany({ data: banks.map((row) => ({ supplierId, ...row })) });
+}
+
+export async function createSupplier(payload: SupplierPayload): Promise<{ error: string } | undefined> {
+  let id = "";
+  try {
     const session = await requirePermission("purchasing.write");
-    await prisma.supplier.updateMany({
-      where: { id, organizationId: session.organization.id },
-      data: {
-        email: String(formData.get("email") || "").trim(),
-        leadTimeDays: Number(formData.get("leadTimeDays") || 0),
-        paymentTerms: String(formData.get("paymentTerms") || "").trim(),
-        notes: String(formData.get("notes") || "").trim(),
-      },
+    const data = supplierData(payload);
+    const existing = await prisma.supplier.findMany({ where: { organizationId: session.organization.id }, select: { code: true } });
+    const code = data.code || (await nextCode("LF-", existing.map((row) => row.code), 3));
+    const supplier = await prisma.$transaction(async (tx) => {
+      const created = await tx.supplier.create({
+        data: { organizationId: session.organization.id, ...data, code },
+      });
+      await writeSupplierRelations(tx, created.id, payload);
+      await record(tx, {
+        organizationId: session.organization.id,
+        actorId: session.user.id,
+        type: "supplier.created",
+        entityType: "supplier",
+        entityId: created.id,
+        summary: "Supplier created.",
+      });
+      return created;
+    });
+    id = supplier.id;
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: messageFor(error) };
+  }
+  refresh();
+  redirect(`/suppliers/${id}?notice=` + encodeURIComponent("Supplier created."));
+}
+
+export async function saveSupplier(supplierId: string, payload: SupplierPayload): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const session = await requirePermission("purchasing.write");
+    const supplier = await prisma.supplier.findFirst({ where: { id: supplierId, organizationId: session.organization.id } });
+    if (!supplier) return { ok: false, error: "Supplier not found." };
+    const data = supplierData(payload);
+    const code = data.code || supplier.code;
+    await prisma.$transaction(async (tx) => {
+      await tx.supplier.update({ where: { id: supplier.id }, data: { ...data, code } });
+      await writeSupplierRelations(tx, supplier.id, payload);
+      await record(tx, {
+        organizationId: session.organization.id,
+        actorId: session.user.id,
+        type: "supplier.updated",
+        entityType: "supplier",
+        entityId: supplier.id,
+        summary: "Supplier saved.",
+      });
     });
     refresh();
-    redirect(`/suppliers/${id}?notice=` + encodeURIComponent("Saved."));
-  });
+    return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false, error: messageFor(error) };
+  }
 }
 
 type CustomerField = "name" | "email" | "phone" | "company" | "type" | "street" | "addressLine2" | "postalCode" | "city" | "country" | "paymentTerms" | "vatId" | "taxNumber" | "notes";
