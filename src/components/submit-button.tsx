@@ -13,7 +13,7 @@ export function SubmitButton({
 }: {
   children: React.ReactNode;
   variant?: ButtonVariant;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
   pendingLabel?: string;
   className?: string;
 }) {

@@ -4,7 +4,8 @@ import { getSession } from "@/lib/auth";
 import { one } from "@/lib/format";
 import { translator } from "@/lib/i18n-server";
 import { register } from "@/server/actions/auth";
-import { Banner, Field, fieldClass } from "@/components/ui";
+import { Banner } from "@/components/ui";
+import { AuthField, AuthFrame, authField } from "@/components/auth-frame";
 import { SubmitButton } from "@/components/submit-button";
 
 export async function generateMetadata() {
@@ -19,39 +20,35 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
   const query = await searchParams;
   const error = one(query.error);
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-bg px-6 py-16">
-      <div className="w-full max-w-[380px]">
-        <div className="mb-8 flex items-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-[13px] font-semibold text-primary-ink">A</span>
-          <span className="text-[15px] font-semibold tracking-[-0.01em]">Aera</span>
-        </div>
-        <h1 className="text-[24px] font-semibold tracking-[-0.02em]">{tx("Create your company")}</h1>
-        <p className="mt-1 text-[13px] text-muted">{tx("Your own workspace with catalog, orders, inventory and bookkeeping.")}</p>
-        <div className="mt-6 rounded-2xl bg-surface p-6 shadow-[var(--shadow)]">
-          <Banner error={error ? tx(error) : undefined} />
-          <form action={register} className="space-y-4">
-            <Field label={tx("Company")}>
-              <input name="company" autoComplete="organization" required autoFocus className={fieldClass} />
-            </Field>
-            <Field label={tx("Your name")}>
-              <input name="name" autoComplete="name" required className={fieldClass} />
-            </Field>
-            <Field label={tx("Email")}>
-              <input name="email" type="email" autoComplete="email" required className={fieldClass} />
-            </Field>
-            <Field label={tx("Password")} hint={tx("At least 8 characters")}>
-              <input name="password" type="password" autoComplete="new-password" required minLength={8} className={fieldClass} />
-            </Field>
-            <SubmitButton pendingLabel="Creating..." className="w-full">{tx("Create account")}</SubmitButton>
-          </form>
-        </div>
-        <p className="mt-6 text-[12px] text-muted">
+    <AuthFrame
+      title={tx("Create your company")}
+      subtitle={tx("Your own workspace for catalog, orders, inventory and bookkeeping. Free during the beta.")}
+      footer={
+        <>
           {tx("Already have an account?")}{" "}
           <Link href="/login" className="font-medium text-ink underline-offset-2 hover:underline">
             {tx("Sign in")}
           </Link>
-        </p>
-      </div>
-    </main>
+        </>
+      }
+    >
+      <Banner error={error ? tx(error) : undefined} />
+      <form action={register} className="space-y-4">
+        <AuthField label={tx("Company")}>
+          <input name="company" autoComplete="organization" required autoFocus placeholder={tx("Acme Goods GmbH")} className={authField} />
+        </AuthField>
+        <AuthField label={tx("Your name")}>
+          <input name="name" autoComplete="name" required className={authField} />
+        </AuthField>
+        <AuthField label={tx("Work email")}>
+          <input name="email" type="email" autoComplete="email" required placeholder="name@company.com" className={authField} />
+        </AuthField>
+        <AuthField label={tx("Password")} hint={tx("At least 8 characters")}>
+          <input name="password" type="password" autoComplete="new-password" required minLength={8} className={authField} />
+        </AuthField>
+        <SubmitButton size="lg" pendingLabel="Creating..." className="w-full">{tx("Create account")}</SubmitButton>
+        <p className="text-center text-[12px] text-faint">{tx("No credit card. Your warehouse, tax rates and number ranges are ready when you land.")}</p>
+      </form>
+    </AuthFrame>
   );
 }
