@@ -235,21 +235,6 @@ export async function addVariant(formData: FormData) {
     redirect(`/products/${productId}?notice=` + encodeURIComponent("Variant created."));
   });
 }
-
-export async function archiveProducts(formData: FormData) {
-  await runAction("/products", async () => {
-    const session = await requirePermission("catalog.write");
-    const ids = formData.getAll("ids").map(String).filter(Boolean);
-    if (ids.length === 0) throw new Error("Nothing selected.");
-    await prisma.product.updateMany({
-      where: { organizationId: session.organization.id, id: { in: ids } },
-      data: { status: "archived" },
-    });
-    refresh();
-    redirect("/products?notice=" + encodeURIComponent("Archived."));
-  });
-}
-
 export type SupplierContactInput = { id: string; name: string; role: string; email: string; phone: string };
 export type SupplierBankInput = { id: string; accountHolder: string; iban: string; bic: string; bankName: string };
 

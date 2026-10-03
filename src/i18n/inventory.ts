@@ -77,7 +77,7 @@ export const inventory: Record<string, string> = {
   "On hand": "Bestand",
   "On hand does not cover open orders": "Bestand reicht nicht für offene Aufträge",
   "Open purchase orders": "Offene Bestellungen",
-  "Order": "Bestellen",
+  "Order now": "Bestellen",
   "Order from supplier": "Beim Lieferanten bestellen",
   "Order value": "Bestellwert",
   "Order value at cost": "Bestellwert zu Einstand",

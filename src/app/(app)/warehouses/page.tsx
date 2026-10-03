@@ -85,7 +85,7 @@ export default async function WarehousesPage({ searchParams }: { searchParams: P
                     <span key="r" className="text-muted">{row.reorderPoint || "—"}</span>,
                     <span key="s" className="relative z-10 flex items-center justify-end gap-2">
                       {row.onHand < 0 ? <Pill tone="danger">{tx("Negative")}</Pill> : reorder ? <Pill tone="warning">{tx("Reorder")}</Pill> : isCovered(row) ? <Pill tone="info">{tx("Ordered")}</Pill> : null}
-                      {reorder && row.supplierId && can(session.role, "purchasing.write") ? <Button href="/reorder" variant="secondary" size="sm">{tx("Order")}</Button> : null}
+                      {reorder && row.supplierId && can(session.role, "purchasing.write") ? <Button href="/reorder" variant="secondary" size="sm">{tx("Order now")}</Button> : null}
                     </span>,
                   ],
                 };

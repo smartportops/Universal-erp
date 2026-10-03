@@ -3,8 +3,10 @@ import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { one } from "@/lib/format";
 import { getLocale, translator } from "@/lib/i18n-server";
+import { exportHref, paginate } from "@/lib/paging";
 import { Filters } from "@/components/filters";
-import { Banner, Button, DataTable, PageIntro, Panel, Thumb } from "@/components/ui";
+import { ListTable } from "@/components/list-table";
+import { Banner, Button, PageIntro, Panel, Thumb } from "@/components/ui";
 
 export async function generateMetadata() {
   const tx = await translator();
@@ -23,30 +25,45 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
     include: { purchaseOrders: { select: { status: true } } },
     orderBy: { name: "asc" },
   });
+  const { page, total, rows } = paginate(suppliers, query);
   return (
     <div>
       <PageIntro title={tx("Suppliers")} actions={can(session.role, "purchasing.write") ? <Button href="/suppliers/new">{tx("Create supplier")}</Button> : undefined} />
       <Banner notice={one(query.notice)} error={one(query.error)} />
       <Filters action="/suppliers" q={q} placeholder={tx("Name or number")} />
       <Panel flush>
-        <DataTable
-          columns={[{ label: tx("Supplier") }, { label: tx("Country") }, { label: tx("Lead time"), align: "right" }, { label: tx("Payment terms") }, { label: tx("Open purchase orders"), align: "right" }]}
-          rows={suppliers.map((supplier) => ({
+        <ListTable
+          id="suppliers"
+          page={page}
+          total={total}
+          exportHref={exportHref("suppliers", query)}
+          columns={[
+            { key: "supplier", label: tx("Supplier") },
+            { key: "city", label: tx("City") },
+            { key: "country", label: tx("Country") },
+            { key: "lead", label: tx("Lead time"), align: "right" },
+            { key: "terms", label: tx("Payment terms") },
+            { key: "open", label: tx("Open purchase orders"), align: "right" },
+          ]}
+          rows={rows.map((supplier) => ({
             key: supplier.id,
             href: `/suppliers/${supplier.id}`,
-            cells: [
-              <span key="n" className="flex items-center gap-3">
-                <Thumb label={supplier.name} size={30} />
-                <span className="min-w-0">
-                  <span className="block truncate">{supplier.name}</span>
-                  <span className="block text-[12px] font-normal text-muted">{supplier.code}</span>
+            cells: {
+              supplier: (
+                <span className="flex items-center gap-3">
+                  <Thumb label={supplier.name} size={30} />
+                  <span className="min-w-0">
+                    <span className="block truncate">{supplier.name}</span>
+                    <span className="block text-[12px] font-normal text-muted">{supplier.code}</span>
+                  </span>
                 </span>
-              </span>,
-              <span key="c" className="text-muted">{supplier.country}</span>,
-              tx("{days} days", { days: supplier.leadTimeDays }),
-              <span key="p" className="text-muted">{supplier.paymentTerms}</span>,
-              supplier.purchaseOrders.filter((order) => ["ordered", "partial"].includes(order.status)).length,
-            ],
+              ),
+              city: <span className="text-muted">{supplier.city || "—"}</span>,
+              country: <span className="text-muted">{supplier.country}</span>,
+              lead: tx("{days} days", { days: supplier.leadTimeDays }),
+              terms: <span className="text-muted">{supplier.paymentTerms}</span>,
+              open: supplier.purchaseOrders.filter((order) => ["ordered", "partial"].includes(order.status)).length,
+            },
           }))}
           empty={{ title: tx("No suppliers"), body: tx("No supplier, no purchasing.") }}
         />

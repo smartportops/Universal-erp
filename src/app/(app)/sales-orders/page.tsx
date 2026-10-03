@@ -2,11 +2,13 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { dayKey, formatDay, money, one, relativeDay, todayKey } from "@/lib/format";
-import { channels, orderStatus } from "@/lib/labels";
+import { channels, orderStatus, priorities } from "@/lib/labels";
 import { getLocale, translator } from "@/lib/i18n-server";
 import { txMap } from "@/lib/i18n";
+import { exportHref, paginate } from "@/lib/paging";
 import { Filters } from "@/components/filters";
-import { Banner, Button, DataTable, PageIntro, Panel, Pill, Status, Tabs } from "@/components/ui";
+import { ListTable } from "@/components/list-table";
+import { Banner, Button, PageIntro, Panel, Pill, Status, Tabs } from "@/components/ui";
 
 export async function generateMetadata() {
   const tx = await translator();
@@ -29,7 +31,7 @@ export default async function SalesOrdersPage({ searchParams }: { searchParams: 
       where: {
         organizationId: session.organization.id,
         ...(channel ? { channel } : {}),
-        ...(q ? { OR: [{ number: { contains: q } }, { externalRef: { contains: q } }, { customer: { name: { contains: q } } }] } : {}),
+        ...(q ? { OR: [{ number: { contains: q } }, { externalRef: { contains: q } }, { customer: { name: { contains: q, mode: "insensitive" } } }] } : {}),
       },
       include: { customer: true, lines: true },
       orderBy: { orderedAt: "desc" },
@@ -43,16 +45,31 @@ export default async function SalesOrdersPage({ searchParams }: { searchParams: 
     shipped: (order) => ["shipped", "delivered"].includes(order.status),
   };
   const visible = orders.filter(filters[view] ?? (() => true));
+  const { page, total, rows } = paginate(visible, query);
   const tab = (key: string, label: string) => ({
     href: `/sales-orders${key ? `?view=${key}` : ""}`,
     label,
     active: view === key || (!view && !key),
     count: key ? orders.filter(filters[key]).length : orders.length,
   });
+  const canSales = can(session.role, "sales.write");
+  const canFinance = can(session.role, "finance.write");
+  const actions = [
+    { key: "delivery_notes", label: "Download delivery notes", download: true },
+    ...(canFinance ? [{ key: "invoice", label: "Create invoices" }] : []),
+    ...(canSales
+      ? [
+          { key: "hold", label: "Put on hold" },
+          { key: "release", label: "Release" },
+          { key: "complete", label: "Mark as completed" },
+          { key: "cancel", label: "Cancel orders", tone: "danger" as const },
+        ]
+      : []),
+  ];
 
   return (
     <div>
-      <PageIntro title={tx("Orders")} actions={can(session.role, "sales.write") ? <Button href="/sales-orders/new">{tx("Create order")}</Button> : undefined} />
+      <PageIntro title={tx("Orders")} actions={canSales ? <Button href="/sales-orders/new">{tx("Create order")}</Button> : undefined} />
       <Banner error={one(query.error)} notice={one(query.notice)} />
       <Tabs
         items={[
@@ -71,25 +88,43 @@ export default async function SalesOrdersPage({ searchParams }: { searchParams: 
         selects={[{ name: "channel", value: channel, placeholder: tx("All channels"), options: Object.entries(channels).map(([value, label]) => ({ value, label: tx(label) })) }]}
       />
       <Panel flush>
-        <DataTable
-          columns={[{ label: tx("Order") }, { label: tx("Customer") }, { label: tx("Channel") }, { label: tx("Date") }, { label: tx("Promised") }, { label: tx("Status") }, { label: tx("Total"), align: "right" }]}
-          rows={visible.map((order) => {
+        <ListTable
+          id="sales-orders"
+          page={page}
+          total={total}
+          exportHref={exportHref("sales-orders", query)}
+          bulk={{ entity: "sales_order", actions, allIds: visible.map((order) => order.id) }}
+          columns={[
+            { key: "number", label: tx("Order") },
+            { key: "customer", label: tx("Customer") },
+            { key: "channel", label: tx("Channel") },
+            { key: "date", label: tx("Date") },
+            { key: "promised", label: tx("Promised") },
+            { key: "priority", label: tx("Priority") },
+            { key: "status", label: tx("Status") },
+            { key: "total", label: tx("Total"), align: "right" },
+          ]}
+          rows={rows.map((order) => {
             const late = isLate(order);
             return {
               key: order.id,
               href: `/sales-orders/${order.id}`,
-              cells: [
-                order.number,
-                order.customer.name,
-                <span key="c" className="text-muted">{tx(channels[order.channel] ?? order.channel)}</span>,
-                <span key="d" className="text-muted">{formatDay(order.orderedAt)}</span>,
-                order.promisedAt ? <span key="p" className={late ? "font-medium text-danger" : "text-muted"}>{relativeDay(order.promisedAt, locale)}</span> : <span key="p" className="text-faint">—</span>,
-                <span key="s" className="inline-flex gap-1.5">
-                  <Status map={txMap(orderStatus, tx)} value={order.status} />
-                  {late ? <Pill tone="danger">{tx("Late")}</Pill> : null}
-                </span>,
-                <span key="t" className="font-medium">{money(order.lines.reduce((sum, line) => sum + line.quantity * line.unitPriceCents, 0))}</span>,
-              ],
+              cells: {
+                number: order.number,
+                customer: order.customer.name,
+                channel: <span className="text-muted">{tx(channels[order.channel] ?? order.channel)}</span>,
+                date: <span className="text-muted">{formatDay(order.orderedAt)}</span>,
+                promised: order.promisedAt ? <span className={late ? "font-medium text-danger" : "text-muted"}>{relativeDay(order.promisedAt, locale)}</span> : <span className="text-faint">—</span>,
+                priority: <span className={order.priority === "urgent" || order.priority === "high" ? "font-medium text-danger" : "text-muted"}>{tx(priorities[order.priority] ?? order.priority)}</span>,
+                status: (
+                  <span className="inline-flex gap-1.5">
+                    <Status map={txMap(orderStatus, tx)} value={order.status} />
+                    {order.onHold ? <Pill tone="warning">{tx("On hold")}</Pill> : null}
+                    {late ? <Pill tone="danger">{tx("Late")}</Pill> : null}
+                  </span>
+                ),
+                total: <span className="font-medium">{money(order.lines.reduce((sum, line) => sum + line.quantity * line.unitPriceCents, 0))}</span>,
+              },
             };
           })}
           empty={{ title: tx("No orders"), body: tx("Nothing in this view.") }}

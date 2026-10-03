@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { dayKey, formatDay, money, one, todayKey } from "@/lib/format";
 import { invoiceKinds, invoiceStatus } from "@/lib/labels";
 import { getLocale, translator } from "@/lib/i18n-server";
 import { txMap } from "@/lib/i18n";
 import { invoiceOpenAmount, signedInvoiceNet } from "@/lib/invoices";
+import { exportHref, paginate } from "@/lib/paging";
 import { Filters } from "@/components/filters";
-import { DataTable, PageIntro, Panel, Pill, Stat, Status, fieldClass } from "@/components/ui";
+import { ListTable } from "@/components/list-table";
+import { Banner, PageIntro, Panel, Pill, Stat, Status } from "@/components/ui";
 
 export async function generateMetadata() {
   const tx = await translator();
@@ -24,9 +27,9 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   const invoices = await prisma.invoice.findMany({
     where: {
       organizationId: session.organization.id,
-      ...(q ? { OR: [{ number: { contains: q } }, { customer: { name: { contains: q } } }] } : {}),
+      ...(q ? { OR: [{ number: { contains: q } }, { customer: { name: { contains: q, mode: "insensitive" } } }] } : {}),
     },
-    include: { customer: true, payments: true },
+    include: { customer: true, payments: true, salesOrder: { select: { number: true } } },
     orderBy: { createdAt: "desc" },
   });
   const credited = new Map<string, number>();
@@ -35,55 +38,77 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       credited.set(invoice.correctsId, (credited.get(invoice.correctsId) ?? 0) + invoice.totalCents);
     }
   }
-  const rows = invoices.map((invoice) => {
+  const enriched = invoices.map((invoice) => {
     const open = invoiceOpenAmount(invoice, credited.get(invoice.id) ?? 0);
     const overdue = open > 0 && !!invoice.dueAt && dayKey(invoice.dueAt) < today;
     const display = signedInvoiceNet({ ...invoice, netCents: invoice.totalCents });
     return { ...invoice, open, overdue, display };
   });
-  const visible = rows.filter((row) => !kind || row.kind === kind);
-  const openTotal = rows.reduce((sum, row) => sum + row.open, 0);
-  const overdueTotal = rows.filter((row) => row.overdue).reduce((sum, row) => sum + row.open, 0);
-  const kindOptions = ["", "invoice", "cancellation", "credit", "credit_cancellation"];
+  const visible = enriched.filter((row) => !kind || row.kind === kind);
+  const openTotal = enriched.reduce((sum, row) => sum + row.open, 0);
+  const overdueTotal = enriched.filter((row) => row.overdue).reduce((sum, row) => sum + row.open, 0);
+  const kindOptions = ["invoice", "cancellation", "credit", "credit_cancellation"];
+  const canFinance = can(session.role, "finance.write");
+  const { page, total, rows } = paginate(visible, query);
   void locale;
 
   return (
     <div>
       <PageIntro title={tx("Invoices")} description={tx("Invoices, cancellation invoices and credit notes. Issued documents stay as they are. A correction is always a new document.")} />
+      <Banner error={one(query.error)} notice={one(query.notice)} />
       <div className="mb-5 grid gap-3 sm:grid-cols-2">
         <Stat label={tx("Open")} value={money(openTotal)} />
         <Stat label={tx("Of which overdue")} value={money(overdueTotal)} tone={overdueTotal ? "danger" : undefined} />
       </div>
-      <form action="/invoices" className="mb-3 flex flex-wrap items-center gap-2">
-        {q ? <input type="hidden" name="q" value={q} /> : null}
-        <select name="kind" defaultValue={kind} className={`${fieldClass} w-auto min-w-56`}>
-          {kindOptions.map((key) => (
-            <option key={key || "all"} value={key}>{tx(key ? invoiceKinds[key] : "All documents")}</option>
-          ))}
-        </select>
-        <button className="h-9 rounded-lg bg-surface px-3 text-[13px] font-medium ring-1 ring-line-strong hover:bg-subtle" type="submit">{tx("Apply")}</button>
-      </form>
-      <Filters action="/invoices" q={q} placeholder={tx("Number or customer")} hidden={{ kind }} />
+      <Filters
+        action="/invoices"
+        q={q}
+        placeholder={tx("Number or customer")}
+        selects={[{ name: "kind", value: kind, placeholder: tx("All documents"), options: kindOptions.map((key) => ({ value: key, label: tx(invoiceKinds[key]) })) }]}
+      />
       <Panel flush>
-        <DataTable
-          columns={[{ label: tx("Invoice") }, { label: tx("Type") }, { label: tx("Customer") }, { label: tx("Due") }, { label: tx("Status") }, { label: tx("Amount"), align: "right" }, { label: tx("Open"), align: "right" }]}
-          rows={visible.map((invoice) => ({
+        <ListTable
+          id="invoices"
+          page={page}
+          total={total}
+          exportHref={exportHref("invoices", query)}
+          bulk={{
+            entity: "invoice",
+            allIds: visible.map((invoice) => invoice.id),
+            actions: [{ key: "pdfs", label: "Download PDFs", download: true }, ...(canFinance ? [{ key: "cancel", label: "Create cancellation invoices", tone: "danger" as const }] : [])],
+          }}
+          columns={[
+            { key: "number", label: tx("Invoice") },
+            { key: "kind", label: tx("Type") },
+            { key: "customer", label: tx("Customer") },
+            { key: "order", label: tx("Order") },
+            { key: "issued", label: tx("Issued") },
+            { key: "due", label: tx("Due") },
+            { key: "status", label: tx("Status") },
+            { key: "amount", label: tx("Amount"), align: "right" },
+            { key: "open", label: tx("Open"), align: "right" },
+          ]}
+          rows={rows.map((invoice) => ({
             key: invoice.id,
             href: `/invoices/${invoice.id}`,
-            cells: [
-              invoice.number,
-              tx(invoiceKinds[invoice.kind] ?? invoice.kind),
-              invoice.customer.name,
-              <span key="d" className={invoice.overdue ? "font-medium text-danger" : "text-muted"}>{formatDay(invoice.dueAt)}</span>,
-              <span key="s" className="inline-flex gap-1.5">
-                <Status map={txMap(invoiceStatus, tx)} value={invoice.status} />
-                {invoice.overdue ? <Pill tone="danger">{tx("Overdue")}</Pill> : null}
-              </span>,
-              money(invoice.display),
-              <span key="o" className={invoice.open ? "font-medium" : "text-faint"}>{money(invoice.open)}</span>,
-            ],
+            cells: {
+              number: invoice.number,
+              kind: tx(invoiceKinds[invoice.kind] ?? invoice.kind),
+              customer: invoice.customer.name,
+              order: <span className="text-muted">{invoice.salesOrder?.number ?? "—"}</span>,
+              issued: <span className="text-muted">{formatDay(invoice.issuedAt)}</span>,
+              due: <span className={invoice.overdue ? "font-medium text-danger" : "text-muted"}>{formatDay(invoice.dueAt)}</span>,
+              status: (
+                <span className="inline-flex gap-1.5">
+                  <Status map={txMap(invoiceStatus, tx)} value={invoice.status} />
+                  {invoice.overdue ? <Pill tone="danger">{tx("Overdue")}</Pill> : null}
+                </span>
+              ),
+              amount: money(invoice.display),
+              open: <span className={invoice.open ? "font-medium" : "text-faint"}>{money(invoice.open)}</span>,
+            },
           }))}
-          empty={{ title: tx("No invoices"), body: tx("Invoices are created from fully shipped orders.") }}
+          empty={{ title: tx("No invoices"), body: tx("Invoices are created from orders.") }}
         />
       </Panel>
     </div>
