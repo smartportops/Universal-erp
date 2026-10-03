@@ -133,4 +133,25 @@ export const documentKinds: Record<string, string> = {
   quote: "Quote",
   purchase_order: "Purchase order",
   other: "Document",
+  incoming: "Incoming voucher",
+  outgoing: "Outgoing voucher",
+};
+
+export const accountNames: Record<string, string> = {
+  "0900": "Equity",
+  "1200": "Bank",
+  "1400": "Receivables",
+  "1570": "Input VAT",
+  "1600": "Merchandise",
+  "3300": "Payables",
+  "3800": "Output VAT",
+  "4000": "Sales revenue",
+  "4200": "Sales revenue, reduced rate",
+  "4300": "Sales revenue, zero rate",
+  "5000": "Cost of goods",
+  "6000": "Rent and premises",
+  "6300": "Insurance",
+  "6800": "Postage and telecom",
+  "6815": "Office supplies",
+  "7000": "External services",
 };

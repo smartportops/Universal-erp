@@ -1,6 +1,9 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { signedInvoiceNet } from "@/lib/invoices";
+import { parseDay, periodRange } from "@/lib/period";
+import { annualStatements, vatReturn } from "@/server/domain/accounting";
+import { listDocuments, matchesDocument } from "@/server/domain/vouchers";
 import { getBalances } from "@/server/snapshot";
 
 function csv(rows: (string | number | null | undefined)[][]) {
@@ -145,6 +148,60 @@ export async function GET(request: Request, context: { params: Promise<{ entity:
     body = csv([
       ["number", "order", "customer", "reason", "status", "created_at"],
       ...returns.map((entry) => [entry.number, entry.salesOrder.number, entry.customer.name, entry.reason, entry.status, day(entry.createdAt)]),
+    ]);
+  } else if (entity === "vouchers") {
+    const rows = (await listDocuments(org)).filter((row) => matchesDocument(row, { q, direction: params.get("direction") ?? "" }));
+    body = csv([
+      ["date", "number", "origin", "direction", "type", "counterparty", "reference", "net", "tax", "gross", "status"],
+      ...rows.map((row) => [day(row.date), row.number, row.origin, row.direction, row.kind, row.party, row.reference, eur(row.net), eur(row.tax), eur(row.gross), row.status]),
+    ]);
+  } else if (entity === "journal") {
+    const from = parseDay(params.get("from") ?? "");
+    const to = parseDay(params.get("to") ?? "");
+    const lines = await prisma.journalLine.findMany({
+      where: {
+        entry: {
+          organizationId: org,
+          ...(from || to ? { entryDate: { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) } } : {}),
+        },
+      },
+      include: { account: true, entry: true },
+      orderBy: [{ entry: { entryDate: "asc" } }, { entry: { number: "asc" } }],
+    });
+    body = csv([
+      ["date", "number", "memo", "source_type", "source_id", "account", "account_name", "debit", "credit", "description"],
+      ...lines.map((line) => [day(line.entry.entryDate), line.entry.number, line.entry.memo, line.entry.sourceType, line.entry.sourceId, line.account.code, line.account.name, eur(line.debitCents), eur(line.creditCents), line.description]),
+    ]);
+  } else if (entity === "vat") {
+    const year = Number(params.get("year")) || new Date().getUTCFullYear();
+    const range = periodRange(year, params.get("period") ?? "y");
+    const report = await vatReturn(org, range.from, range.to);
+    body = csv([
+      ["rate_percent", "output_net", "output_vat", "input_net", "input_vat"],
+      ...report.rows.map((row) => [(row.rateBps / 100).toFixed(2), eur(row.outNet), eur(row.outTax), eur(row.inNet), eur(row.inTax)]),
+      ["total", eur(report.outNet), eur(report.outTax), eur(report.inNet), eur(report.inTax)],
+      ["payable", "", eur(report.payable), "", ""],
+      ["booked_output_3800", "", eur(report.bookedOutput), "", ""],
+      ["booked_input_1570", "", "", "", eur(report.bookedInput)],
+    ]);
+  } else if (entity === "statements") {
+    const year = Number(params.get("year")) || new Date().getUTCFullYear();
+    const report = await annualStatements(org, year);
+    const section = (name: string, lines: { code: string; name: string; amount: number }[]) => lines.map((line) => [name, line.code, line.name, eur(line.amount)]);
+    body = csv([
+      ["section", "code", "name", "amount"],
+      ...section("revenue", report.revenue),
+      ["revenue_total", "", "", eur(report.revenueTotal)],
+      ...section("expense", report.expenses),
+      ["expense_total", "", "", eur(report.expenseTotal)],
+      ["result", "", "", eur(report.result)],
+      ...section("asset", report.assets),
+      ["asset_total", "", "", eur(report.assetTotal)],
+      ...section("liability", report.liabilities),
+      ["liability_total", "", "", eur(report.liabilityTotal)],
+      ...section("equity", report.equity),
+      ["result_carried_forward", "", "", eur(report.priorResult)],
+      ["equity_total", "", "", eur(report.equityTotal)],
     ]);
   } else {
     return new Response("Unknown export", { status: 404 });

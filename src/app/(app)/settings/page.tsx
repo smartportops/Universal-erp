@@ -47,6 +47,7 @@ const sequenceLabels: Record<string, string> = {
   quote: "Quotes",
   return: "Returns",
   journal: "Journal entries",
+  voucher: "Vouchers",
 };
 
 const entityLabels: Record<string, string> = { product: "Product", customer: "Customer", sales_order: "Sales order", supplier: "Supplier" };

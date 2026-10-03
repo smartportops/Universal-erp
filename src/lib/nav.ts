@@ -50,6 +50,7 @@ export const navigation: { label?: string; items: NavItem[] }[] = [
     label: "Finance",
     items: [
       { href: "/invoices", label: "Invoices", icon: "invoices" },
+      { href: "/vouchers", label: "Vouchers", icon: "documents" },
       { href: "/bookkeeping", label: "Bookkeeping", icon: "books" },
       { href: "/reports", label: "Reports", icon: "reports" },
     ],
@@ -76,6 +77,7 @@ export function entityHref(type: string, id: string) {
     shipment: "/shipments/",
     return: "/returns/",
     invoice: "/invoices/",
+    voucher: "/vouchers/",
     warehouse: "/warehouses/",
   };
   const base = bases[type];

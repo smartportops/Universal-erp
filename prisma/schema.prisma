@@ -67,6 +67,7 @@ model Organization {
   payments                Payment[]
   accounts                Account[]
   journalEntries          JournalEntry[]
+  vouchers                Voucher[]
   serialNumbers           SerialNumber[]
   documents               Document[]
 }
@@ -835,6 +836,9 @@ model Account {
   type           String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lines          JournalLine[]
+  voucherNets    Voucher[] @relation("VoucherNet")
+  voucherTaxes   Voucher[] @relation("VoucherTax")
+  voucherContras Voucher[] @relation("VoucherContra")
 
   @@unique([organizationId, code])
 }
@@ -894,3 +898,37 @@ model Document {
   @@index([organizationId, entityType, entityId])
   @@index([organizationId, createdAt])
 }
+
+model Voucher {
+  id              String   @id @default(cuid())
+  organizationId  String
+  number          String
+  // in | out
+  direction       String
+  // booked | void
+  status          String   @default("booked")
+  issuedAt        DateTime
+  counterparty    String   @default("")
+  reference       String   @default("")
+  description     String   @default("")
+  netCents        Int
+  taxCents        Int
+  totalCents      Int
+  taxRateBps      Int      @default(0)
+  netAccountId    String
+  taxAccountId    String?
+  contraAccountId String
+  journalEntryId  String   @default("")
+  filename        String   @default("")
+  mimeType        String   @default("")
+  storageKey      String   @default("")
+  createdAt       DateTime @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  netAccount      Account      @relation("VoucherNet", fields: [netAccountId], references: [id])
+  taxAccount      Account?     @relation("VoucherTax", fields: [taxAccountId], references: [id])
+  contraAccount   Account      @relation("VoucherContra", fields: [contraAccountId], references: [id])
+
+  @@unique([organizationId, number])
+  @@index([organizationId, issuedAt])
+}
+

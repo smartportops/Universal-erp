@@ -1,4 +1,5 @@
 import type { Tx } from "@/lib/db";
+import { chartAccounts } from "@/server/domain/chart";
 
 // Every registration gets its own Organization. All commerce data hangs off
 // organizationId, so this is the tenant boundary inside the shared database.
@@ -66,15 +67,7 @@ export async function provisionOrganization(tx: Tx, input: ProvisionInput) {
     ],
   });
   await tx.account.createMany({
-    data: [
-      ["1200", "Bank", "asset"],
-      ["1400", "Forderungen", "asset"],
-      ["1600", "Warenbestand", "asset"],
-      ["3300", "Verbindlichkeiten", "liability"],
-      ["3800", "Umsatzsteuer", "liability"],
-      ["4000", "Umsatzerlöse", "revenue"],
-      ["5000", "Wareneinsatz", "expense"],
-    ].map(([code, name, type]) => ({ organizationId: organization.id, code, name, type })),
+    data: chartAccounts.map((account) => ({ organizationId: organization.id, ...account })),
   });
   await tx.numberSequence.createMany({
     data: [
@@ -88,6 +81,7 @@ export async function provisionOrganization(tx: Tx, input: ProvisionInput) {
       ["quote", "QT-", 5],
       ["return", "RT-", 4],
       ["journal", "JE-", 5],
+      ["voucher", "BE-", 5],
     ].map(([key, prefix, padding]) => ({
       organizationId: organization.id,
       key: String(key),

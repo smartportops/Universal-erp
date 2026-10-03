@@ -18,6 +18,7 @@ import {
   transferStock,
 } from "../src/server/domain/commerce";
 import { record } from "../src/server/domain/platform";
+import { chartAccounts } from "../src/server/domain/chart";
 
 const passwordText = "aera-beta";
 
@@ -72,15 +73,7 @@ async function main() {
     ],
   });
   await prisma.account.createMany({
-    data: [
-      ["1200", "Bank", "asset"],
-      ["1400", "Forderungen", "asset"],
-      ["1600", "Warenbestand", "asset"],
-      ["3300", "Verbindlichkeiten", "liability"],
-      ["3800", "Umsatzsteuer", "liability"],
-      ["4000", "Umsatzerlöse", "revenue"],
-      ["5000", "Wareneinsatz", "expense"],
-    ].map(([code, name, type]) => ({ organizationId: org.id, code, name, type })),
+    data: chartAccounts.map((account) => ({ organizationId: org.id, ...account })),
   });
   await prisma.numberSequence.createMany({
     data: [
@@ -94,6 +87,7 @@ async function main() {
       ["quote", "QT-", 10001, 5],
       ["return", "RT-", 1101, 4],
       ["journal", "JE-", 90021, 5],
+      ["voucher", "BE-", 1, 5],
     ].map(([key, prefix, nextNumber, padding]) => ({
       organizationId: org.id,
       key: String(key),
