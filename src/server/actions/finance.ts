@@ -7,6 +7,7 @@ import { parseMoneyToCents } from "@/lib/format";
 import { refresh, runAction } from "@/server/action";
 import { readDate } from "@/server/forms";
 import { issueInvoice, settlePayment } from "@/server/domain/commerce";
+import { createCancellation, createCreditCancellation, createCreditNote } from "@/server/domain/documents";
 
 export async function issueInvoiceAction(formData: FormData) {
   const id = String(formData.get("id") || "");
@@ -39,5 +40,35 @@ export async function payInvoice(formData: FormData) {
     });
     refresh();
     redirect(`/invoices/${id}?notice=` + encodeURIComponent("Payment recorded."));
+  });
+}
+
+export async function cancelInvoice(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/invoices/${id}`, async () => {
+    const session = await requirePermission("finance.write");
+    const created = await createCancellation(prisma, { organizationId: session.organization.id, actorId: session.user.id, invoiceId: id });
+    refresh();
+    redirect(`/invoices/${created.id}?notice=` + encodeURIComponent("Cancellation invoice created."));
+  });
+}
+
+export async function correctInvoice(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/invoices/${id}`, async () => {
+    const session = await requirePermission("finance.write");
+    const created = await createCreditNote(prisma, { organizationId: session.organization.id, actorId: session.user.id, invoiceId: id });
+    refresh();
+    redirect(`/invoices/${created.id}?notice=` + encodeURIComponent("Credit note created."));
+  });
+}
+
+export async function cancelCreditNote(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/invoices/${id}`, async () => {
+    const session = await requirePermission("finance.write");
+    const created = await createCreditCancellation(prisma, { organizationId: session.organization.id, actorId: session.user.id, invoiceId: id });
+    refresh();
+    redirect(`/invoices/${created.id}?notice=` + encodeURIComponent("Credit note cancelled."));
   });
 }

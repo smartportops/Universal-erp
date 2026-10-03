@@ -8,6 +8,7 @@ import {
   takeNumber,
 } from "@/server/domain/platform";
 import { bookCogs, bookInventoryReceipt, bookReturnToStock, postJournal, writeMovement } from "@/server/domain/ledger";
+import { dueFromTerms, reverseLiveDocuments } from "@/server/domain/documents";
 
 type Actor = { organizationId: string; actorId: string; at?: Date };
 
@@ -251,6 +252,7 @@ export async function markPicking(db: PrismaClient, input: Actor & { salesOrderI
       where: { id: input.salesOrderId, organizationId: input.organizationId },
     });
     if (!order) throw new Error("Auftrag nicht gefunden.");
+    if (order.onHold) throw new Error("This order is on hold.");
     if (order.status !== "confirmed") throw new Error("Nur bestätigte Aufträge gehen in die Kommissionierung.");
     const at = input.at ?? new Date();
     await tx.salesOrder.update({ where: { id: order.id }, data: { status: "picking" } });
@@ -272,22 +274,21 @@ export async function cancelSalesOrder(db: PrismaClient, input: Actor & { salesO
       where: { id: input.salesOrderId, organizationId: input.organizationId },
       include: { lines: true },
     });
-    if (!order) throw new Error("Auftrag nicht gefunden.");
-    if (order.lines.some((line) => line.shippedQty > 0)) {
-      throw new Error("Versendete Aufträge können nicht storniert werden.");
-    }
-    if (!["confirmed", "picking", "draft"].includes(order.status)) {
-      throw new Error("Dieser Status kann nicht storniert werden.");
-    }
+    if (!order) throw new Error("Order not found.");
+    if (order.status === "cancelled") throw new Error("This order is already cancelled.");
+    if (order.status === "completed") throw new Error("A completed order cannot be cancelled.");
     const at = input.at ?? new Date();
-    await tx.salesOrder.update({ where: { id: order.id }, data: { status: "cancelled" } });
+    const shipped = order.lines.some((line) => line.shippedQty > 0);
+    await reverseLiveDocuments(tx, { ...input, at });
+    await tx.salesOrder.update({ where: { id: order.id }, data: { status: "cancelled", onHold: false } });
     await record(tx, {
       organizationId: input.organizationId,
       actorId: input.actorId,
       type: "sales_order.cancelled",
       entityType: "sales_order",
       entityId: order.id,
-      summary: `${order.number} storniert`,
+      summary: shipped ? `${order.number} cancelled after shipping` : `${order.number} cancelled`,
+      body: shipped ? "Issued invoices were reversed with a cancellation document. Stock that already left stays in the ledger until a return is booked." : "",
       at,
     });
   });
@@ -308,6 +309,7 @@ export async function shipSalesOrder(
       include: { lines: { include: { variant: true } } },
     });
     if (!order) throw new Error("Auftrag nicht gefunden.");
+    if (order.onHold) throw new Error("This order is on hold.");
     if (!["confirmed", "picking", "partial"].includes(order.status)) {
       throw new Error("Auftrag kann so nicht versendet werden.");
     }
@@ -449,11 +451,11 @@ export async function issueInvoice(
       include: { lines: { include: { variant: { include: { product: true } } } }, invoices: true, customer: true },
     });
     if (!order) throw new Error("Auftrag nicht gefunden.");
-    if (!["shipped", "delivered"].includes(order.status)) {
-      throw new Error("Rechnung erst nach vollständigem Versand.");
-    }
-    if (order.invoices.some((invoice) => invoice.status !== "void")) {
-      throw new Error("Für diesen Auftrag gibt es schon eine Rechnung.");
+    if (order.status === "cancelled" || order.status === "completed") throw new Error("This order cannot be invoiced.");
+    if (order.onHold) throw new Error("Release the order before invoicing it.");
+    if (order.lines.length === 0) throw new Error("The order has no lines.");
+    if (order.invoices.some((invoice) => (invoice.kind ?? "invoice") === "invoice" && !["cancelled", "void"].includes(invoice.status))) {
+      throw new Error("This order already has an invoice.");
     }
     const at = input.at ?? new Date();
     let net = 0;
@@ -467,13 +469,14 @@ export async function issueInvoice(
       return { line, amount };
     });
     const number = await takeNumber(tx, input.organizationId, "invoice");
-    const dueAt = input.dueAt ?? at;
+    const dueAt = input.dueAt ?? dueFromTerms(order.customer.paymentTerms, at);
     const invoice = await tx.invoice.create({
       data: {
         organizationId: input.organizationId,
         number,
         customerId: order.customerId,
         salesOrderId: order.id,
+        kind: "invoice",
         status: "issued",
         netCents: net,
         taxCents: tax,
@@ -549,6 +552,7 @@ export async function settlePayment(
       include: { payments: true },
     });
     if (!invoice) throw new Error("Rechnung nicht gefunden.");
+    if (invoice.kind !== "invoice") throw new Error("Only an invoice can take a payment.");
     if (!["issued", "partial"].includes(invoice.status)) throw new Error("Rechnung ist nicht offen.");
     if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new Error("Betrag ist ungültig.");
     const paid = invoice.payments

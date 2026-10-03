@@ -6,6 +6,7 @@ import { can, grantsFor, permissionLabels, permissions, roleLabels, roles } from
 import { cn, formatDay, formatWhen, one } from "@/lib/format";
 import { documentKinds } from "@/lib/labels";
 import { entityHref } from "@/lib/nav";
+import { saveAssistant } from "@/server/actions/assistant-settings";
 import {
   addCustomField,
   addTax,
@@ -30,7 +31,7 @@ export async function generateMetadata() {
 const sections: { group: string; items: [string, string][] }[] = [
   { group: "Company", items: [["company", "General"], ["users", "Team"], ["roles", "Roles"]] },
   { group: "Business operations", items: [["taxes", "Taxes"], ["sequences", "Number sequences"], ["fields", "Custom fields"]] },
-  { group: "Data", items: [["integrations", "Integrations"], ["webhooks", "Webhooks"], ["api", "API"], ["import", "Import"]] },
+  { group: "Data", items: [["integrations", "Integrations"], ["webhooks", "Webhooks"], ["api", "API"], ["assistant", "Assistant"], ["import", "Import"]] },
   { group: "History", items: [["documents", "Documents"], ["activities", "Activities"]] },
   { group: "Account", items: [["security", "Security"]] },
 ];
@@ -40,6 +41,10 @@ const sequenceLabels: Record<string, string> = {
   purchase_order: "Purchase orders",
   shipment: "Shipments",
   invoice: "Invoices",
+  invoice_cancellation: "Cancellation invoices",
+  credit: "Credit notes",
+  credit_cancellation: "Credit note cancellations",
+  quote: "Quotes",
   return: "Returns",
   journal: "Journal entries",
 };
@@ -109,9 +114,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 { label: tx("Email"), value: orgEdit("email", org.email) },
                 { label: tx("Phone"), value: orgEdit("phone", org.phone) },
                 { label: tx("VAT ID"), value: orgEdit("vatId", org.vatId) },
+                { label: tx("Tax number"), value: orgEdit("taxNumber", org.taxNumber) },
                 { label: tx("Street"), value: orgEdit("street", org.street) },
                 { label: tx("Postal code"), value: orgEdit("postalCode", org.postalCode) },
                 { label: tx("City"), value: orgEdit("city", org.city) },
+                { label: tx("Account holder"), value: orgEdit("accountHolder", org.accountHolder) },
+                { label: tx("IBAN"), value: orgEdit("iban", org.iban) },
+                { label: tx("BIC"), value: orgEdit("bic", org.bic) },
+                { label: tx("Bank"), value: orgEdit("bankName", org.bankName) },
                 { label: tx("Currency"), value: org.currency },
               ]}
             />
@@ -281,6 +291,27 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </Panel>
             ) : null}
           </div>
+        ) : null}
+
+        {section === "assistant" ? (
+          <Panel title={tx("Assistant")} description={tx("One provider is used for this company. The key stays on the server and the assistant only sees this company's data.")}>
+            <form action={saveAssistant} className="space-y-3">
+              <Field label={tx("Provider")}>
+                <select name="provider" defaultValue={org.aiProvider || "openai"} className={fieldClass}>
+                  <option value="openai">ChatGPT</option>
+                  <option value="anthropic">Claude</option>
+                  <option value="xai">Grok</option>
+                </select>
+              </Field>
+              <Field label={tx("API key")} hint={org.aiKeyCipher ? tx("A key is saved. Leave this empty to keep it.") : tx("Paste the key from OpenAI, Anthropic or xAI.")}>
+                <input name="apiKey" type="password" autoComplete="off" placeholder={org.aiKeyCipher ? "********" : "sk-..."} className={fieldClass} />
+              </Field>
+              <label className="flex items-center gap-2 text-[13px] text-muted">
+                <input name="clear" type="checkbox" value="1" /> {tx("Remove the saved key")}
+              </label>
+              <div className="flex justify-end"><SubmitButton>{tx("Save")}</SubmitButton></div>
+            </form>
+          </Panel>
         ) : null}
 
         {section === "api" ? (

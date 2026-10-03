@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { dayKey, todayKey } from "@/lib/format";
+import { invoiceOpenAmount, signedInvoiceNet } from "@/lib/invoices";
 
 const openOrderStatuses = ["confirmed", "picking", "partial"];
 
@@ -139,11 +140,17 @@ export async function getSnapshot(organizationId: string) {
       ["ordered", "partial"].includes(order.status) &&
       dayKey(order.expectedAt) < today,
   );
+  const credited = new Map<string, number>();
+  for (const invoice of invoices) {
+    if (invoice.kind === "credit" && invoice.correctsId && !["cancelled", "void"].includes(invoice.status)) {
+      credited.set(invoice.correctsId, (credited.get(invoice.correctsId) ?? 0) + invoice.totalCents);
+    }
+  }
   const invoiceRows = invoices.map((invoice) => {
     const paid = invoice.payments
       .filter((payment) => payment.status === "settled")
       .reduce((sum, payment) => sum + payment.amountCents, 0);
-    return { ...invoice, paid, open: invoice.totalCents - paid };
+    return { ...invoice, paid, open: invoiceOpenAmount(invoice, credited.get(invoice.id) ?? 0) };
   });
   const overdueInvoices = invoiceRows.filter(
     (invoice) =>
@@ -198,8 +205,8 @@ export async function getSnapshot(organizationId: string) {
   ];
 
   const revenueMonth = invoiceRows
-    .filter((invoice) => invoice.status !== "void" && invoice.issuedAt && dayKey(invoice.issuedAt).startsWith(month))
-    .reduce((sum, invoice) => sum + invoice.netCents, 0);
+    .filter((invoice) => invoice.issuedAt && dayKey(invoice.issuedAt).startsWith(month))
+    .reduce((sum, invoice) => sum + signedInvoiceNet(invoice), 0);
   const stockValue = balances.reduce((sum, row) => sum + Math.max(row.onHand, 0) * row.costCents, 0);
   const unpaid = invoiceRows
     .filter((invoice) => ["issued", "partial"].includes(invoice.status))

@@ -15,6 +15,7 @@ import {
   refundReturn,
   shipSalesOrder,
 } from "@/server/domain/commerce";
+import { completeSalesOrder, createQuoteFromOrder, setOrderHold, setOrderPriority } from "@/server/domain/documents";
 
 export async function createOrder(formData: FormData) {
   await runAction("/sales-orders/new", async () => {
@@ -131,5 +132,45 @@ export async function refundReturnAction(formData: FormData) {
     await refundReturn(prisma, { organizationId: session.organization.id, actorId: session.user.id, returnId: id });
     refresh();
     redirect(`/returns/${id}?notice=` + encodeURIComponent("Refund posted."));
+  });
+}
+
+export async function setPriority(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/sales-orders/${id}`, async () => {
+    const session = await requirePermission("sales.write");
+    await setOrderPriority(prisma, { organizationId: session.organization.id, actorId: session.user.id, salesOrderId: id, priority: String(formData.get("priority") || "normal") });
+    refresh();
+    redirect(`/sales-orders/${id}?notice=` + encodeURIComponent("Priority updated."));
+  });
+}
+
+export async function holdOrder(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/sales-orders/${id}`, async () => {
+    const session = await requirePermission("sales.write");
+    await setOrderHold(prisma, { organizationId: session.organization.id, actorId: session.user.id, salesOrderId: id, onHold: formData.get("hold") === "1" });
+    refresh();
+    redirect(`/sales-orders/${id}?notice=` + encodeURIComponent(formData.get("hold") === "1" ? "Order on hold." : "Order released."));
+  });
+}
+
+export async function completeOrder(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/sales-orders/${id}`, async () => {
+    const session = await requirePermission("sales.write");
+    await completeSalesOrder(prisma, { organizationId: session.organization.id, actorId: session.user.id, salesOrderId: id });
+    refresh();
+    redirect(`/sales-orders/${id}?notice=` + encodeURIComponent("Order completed."));
+  });
+}
+
+export async function createQuote(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  await runAction(`/sales-orders/${id}`, async () => {
+    const session = await requirePermission("sales.write");
+    const quote = await createQuoteFromOrder(prisma, { organizationId: session.organization.id, actorId: session.user.id, salesOrderId: id });
+    refresh();
+    redirect(`/quotes/${quote.id}?notice=` + encodeURIComponent("Quote created."));
   });
 }

@@ -82,6 +82,10 @@ export async function provisionOrganization(tx: Tx, input: ProvisionInput) {
       ["purchase_order", "PO-", 4],
       ["shipment", "SH-", 5],
       ["invoice", "INV-", 5],
+      ["invoice_cancellation", "ST-", 5],
+      ["credit", "RK-", 5],
+      ["credit_cancellation", "SK-", 5],
+      ["quote", "QT-", 5],
       ["return", "RT-", 4],
       ["journal", "JE-", 5],
     ].map(([key, prefix, padding]) => ({

@@ -19,11 +19,18 @@ model Organization {
   country    String   @default("DE")
   timezone   String   @default("Europe/Berlin")
   vatId      String?
+  taxNumber  String   @default("")
   email      String?
   phone      String?
   street     String?
   postalCode String?
   city       String?
+  iban       String   @default("")
+  bic        String   @default("")
+  bankName   String   @default("")
+  accountHolder String @default("")
+  aiProvider String   @default("")
+  aiKeyCipher String  @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -56,6 +63,7 @@ model Organization {
   shipments               Shipment[]
   returns                 Return[]
   invoices                Invoice[]
+  quotes                  Quote[]
   payments                Payment[]
   accounts                Account[]
   journalEntries          JournalEntry[]
@@ -552,6 +560,7 @@ model Customer {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salesOrders    SalesOrder[]
   invoices       Invoice[]
+  quotes         Quote[]
   returns        Return[]
 
   @@unique([organizationId, code])
@@ -606,6 +615,8 @@ model SalesOrder {
   orderedAt      DateTime
   promisedAt     DateTime?
   notes          String    @default("")
+  priority       String    @default("normal")
+  onHold         Boolean   @default(false)
   createdAt      DateTime  @default(now())
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       Customer         @relation(fields: [customerId], references: [id])
@@ -614,6 +625,7 @@ model SalesOrder {
   shipments      Shipment[]
   returns        Return[]
   invoices       Invoice[]
+  quotes         Quote[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status])
@@ -726,6 +738,9 @@ model Invoice {
   number         String
   customerId     String
   salesOrderId   String?
+  // invoice | cancellation | credit | credit_cancellation
+  kind           String    @default("invoice")
+  correctsId     String?
   status         String
   currency       String    @default("EUR")
   netCents       Int
@@ -737,11 +752,50 @@ model Invoice {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       Customer      @relation(fields: [customerId], references: [id])
   salesOrder     SalesOrder?   @relation(fields: [salesOrderId], references: [id])
+  corrects       Invoice?      @relation("InvoiceCorrection", fields: [correctsId], references: [id])
+  correctedBy    Invoice[]     @relation("InvoiceCorrection")
   lines          InvoiceLine[]
   payments       Payment[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status])
+  @@index([organizationId, kind])
+  @@index([correctsId])
+}
+
+model Quote {
+  id             String   @id @default(cuid())
+  organizationId String
+  number         String
+  customerId     String
+  salesOrderId   String?
+  status         String   @default("draft")
+  currency       String   @default("EUR")
+  netCents       Int
+  taxCents       Int
+  totalCents     Int
+  issuedAt       DateTime @default(now())
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer     @relation(fields: [customerId], references: [id])
+  salesOrder     SalesOrder?  @relation(fields: [salesOrderId], references: [id])
+  lines          QuoteLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+}
+
+model QuoteLine {
+  id             String @id @default(cuid())
+  quoteId        String
+  description    String
+  quantity       Int
+  unitPriceCents Int
+  taxRateBps     Int
+  quote          Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
 }
 
 model InvoiceLine {

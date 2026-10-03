@@ -20,14 +20,17 @@
     "@prisma/client": "^6.19.3",
     "lucide-react": "^1.50.0",
     "next": "16.3.8",
+    "pdfkit": "^0.20.2",
     "prisma": "^6.19.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

@@ -11,6 +11,7 @@ export const orderStatus = {
   partial: { label: "Partially shipped", tone: "warning" },
   shipped: { label: "Shipped", tone: "ok" },
   delivered: { label: "Delivered", tone: "ok" },
+  completed: { label: "Completed", tone: "ok" },
   cancelled: { label: "Cancelled", tone: "neutral" },
 } satisfies Record<string, { label: string; tone: Tone }>;
 
@@ -42,6 +43,7 @@ export const invoiceStatus = {
   partial: { label: "Partially paid", tone: "info" },
   paid: { label: "Paid", tone: "ok" },
   void: { label: "Voided", tone: "neutral" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
 } satisfies Record<string, { label: string; tone: Tone }>;
 
 export const productStatus = {
@@ -107,10 +109,28 @@ export const accountTypes: Record<string, string> = {
   expense: "Expenses",
 };
 
+export const invoiceKinds: Record<string, string> = {
+  invoice: "Invoice",
+  cancellation: "Cancellation invoice",
+  credit: "Credit note",
+  credit_cancellation: "Cancellation of credit note",
+};
+
+export const priorities: Record<string, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
 export const documentKinds: Record<string, string> = {
   goods_receipt: "Goods receipt",
   delivery_note: "Delivery note",
   invoice: "Invoice",
+  cancellation: "Cancellation invoice",
+  credit: "Credit note",
+  credit_cancellation: "Cancellation of credit note",
+  quote: "Quote",
   purchase_order: "Purchase order",
   other: "Document",
 };

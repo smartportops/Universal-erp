@@ -63,9 +63,18 @@ async function explainVariant(organizationId: string, row: BalanceRow, t: Tx): P
   ].join(" ");
 }
 
-export async function answerQuestion(organizationId: string, message: string): Promise<AssistantAnswer> {
+export async function answerQuestion(organizationId: string, message: string, actor?: { actorId: string; role: string; attachment?: { name: string; text?: string; image?: { mime: string; base64: string } } }): Promise<AssistantAnswer> {
   const locale = await getLocale();
   const t: Tx = (text, vars) => translate(locale, text, dictionary, vars);
+  if (actor) {
+    try {
+      const { answerWithModel } = await import("@/server/ai-agent");
+      const modeled = await answerWithModel({ organizationId, actorId: actor.actorId, role: actor.role }, message, actor.attachment);
+      if (modeled) return modeled.title ? modeled : { ...modeled, title: t("Assistant") };
+    } catch (error) {
+      return { title: t("Assistant"), body: error instanceof Error ? error.message : t("Could not save."), links: [] };
+    }
+  }
   const intent = interpret(message);
   const snapshot = await getSnapshot(organizationId);
 

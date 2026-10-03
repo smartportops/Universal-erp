@@ -2,6 +2,7 @@ import type { Customer, Invoice, Payment, SalesOrder, SalesOrderLine } from "@pr
 import { can } from "@/lib/permissions";
 import type { SessionContext } from "@/lib/auth";
 import { formatDay, money } from "@/lib/format";
+import { signedInvoiceNet } from "@/lib/invoices";
 import { channels, customerTypes, invoiceStatus, orderStatus } from "@/lib/labels";
 import { translator } from "@/lib/i18n-server";
 import { txMap } from "@/lib/i18n";
@@ -44,7 +45,7 @@ export async function CustomerEditor({
   const invoices = customer?.invoices ?? [];
   const orders = customer?.salesOrders ?? [];
   const open = invoices.filter((invoice) => ["issued", "partial"].includes(invoice.status)).reduce((sum, invoice) => sum + invoice.totalCents - paidOf(invoice), 0);
-  const revenue = invoices.filter((invoice) => invoice.status !== "void").reduce((sum, invoice) => sum + invoice.netCents, 0);
+  const revenue = invoices.reduce((sum, invoice) => sum + signedInvoiceNet(invoice), 0);
 
   const field = (key: (typeof customerDraftKeys)[number], placeholder?: string, extra?: { type?: "text" | "textarea" | "select"; options?: { value: string; label: string }[] }) => (
     <RecordField k={key} entity="customer" id={id} field={key} disabled={!writable} placeholder={placeholder ?? tx("Add")} type={extra?.type} options={extra?.options} />

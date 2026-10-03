@@ -4,12 +4,12 @@ import { Check } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { cn, dayKey, formatDay, money, one, qty, splitGross, todayKey, toDateInput } from "@/lib/format";
-import { channels, dispositions, invoiceStatus, orderStatus, returnStatus, shipmentStatus } from "@/lib/labels";
+import { centsToInput, cn, dayKey, formatDay, money, one, qty, splitGross, todayKey, toDateInput } from "@/lib/format";
+import { channels, dispositions, invoiceKinds, invoiceStatus, orderStatus, priorities, returnStatus, shipmentStatus } from "@/lib/labels";
 import { getLocale, translator } from "@/lib/i18n-server";
 import { txMap } from "@/lib/i18n";
-import { issueInvoiceAction } from "@/server/actions/finance";
-import { cancelOrder, deliverOrder, openReturn, pickOrder, shipOrder } from "@/server/actions/orders";
+import { deliverOrder, openReturn, pickOrder, shipOrder } from "@/server/actions/orders";
+import { OrderActions } from "@/components/order-actions";
 import { entityExtras } from "@/server/entity";
 import { ActivityFeed, DetailLayout, EntityFields } from "@/components/entity-panel";
 import { InlineEdit } from "@/components/inline-edit";
@@ -38,7 +38,8 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
       warehouse: true,
       lines: { include: { variant: { include: { product: true } } } },
       shipments: { orderBy: { shippedAt: "asc" } },
-      invoices: { include: { payments: true } },
+      invoices: { include: { payments: true }, orderBy: { createdAt: "desc" } },
+      quotes: { orderBy: { createdAt: "desc" } },
       returns: true,
     },
   });
@@ -47,8 +48,13 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
   const open = ["confirmed", "picking", "partial"].includes(order.status);
   const late = !!order.promisedAt && open && dayKey(order.promisedAt) < todayKey();
   const fulfill = can(session.role, "fulfillment.write");
-  const invoice = order.invoices.find((entry) => entry.status !== "void");
-  const canInvoice = can(session.role, "finance.write") && ["shipped", "delivered"].includes(order.status) && !invoice;
+  const invoice = order.invoices.find((entry) => entry.kind === "invoice" && !["cancelled", "void"].includes(entry.status));
+  const credited = invoice
+    ? order.invoices.filter((entry) => entry.kind === "credit" && entry.correctsId === invoice.id && !["cancelled", "void"].includes(entry.status)).reduce((sum, entry) => sum + entry.totalCents, 0)
+    : 0;
+  const paid = invoice ? invoice.payments.filter((payment) => payment.status === "settled").reduce((sum, payment) => sum + payment.amountCents, 0) : 0;
+  const openCents = invoice && ["issued", "partial"].includes(invoice.status) ? Math.max(invoice.totalCents - paid - credited, 0) : 0;
+  const canInvoice = can(session.role, "finance.write") && !["cancelled", "completed"].includes(order.status) && !order.onHold && !invoice;
   const writable = can(session.role, "sales.write");
 
   const total = order.lines.reduce((sum, line) => sum + line.quantity * line.unitPriceCents, 0);
@@ -81,25 +87,33 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
         badges={
           <>
             <Status map={txMap(orderStatus, tx)} value={order.status} />
+            {order.onHold ? <Pill tone="warning">{tx("On hold")}</Pill> : null}
+            {order.priority !== "normal" ? <Pill tone={order.priority === "urgent" || order.priority === "high" ? "danger" : "neutral"}>{tx(priorities[order.priority] ?? order.priority)}</Pill> : null}
             {late ? <Pill tone="danger">{tx("Late")}</Pill> : null}
           </>
         }
         actions={
           <>
-            {fulfill && order.status === "confirmed" ? (
+            {fulfill && order.status === "confirmed" && !order.onHold ? (
               <form action={pickOrder}><input type="hidden" name="id" value={order.id} /><SubmitButton variant="secondary">{tx("Pick")}</SubmitButton></form>
             ) : null}
             {fulfill && order.status === "shipped" ? (
               <form action={deliverOrder}><input type="hidden" name="id" value={order.id} /><SubmitButton variant="secondary">{tx("Mark as delivered")}</SubmitButton></form>
             ) : null}
-            {canInvoice ? (
-              <form action={issueInvoiceAction}><input type="hidden" name="id" value={order.id} /><SubmitButton>{tx("Issue invoice")}</SubmitButton></form>
-            ) : null}
-            {invoice ? <Link href={`/invoices/${invoice.id}`} className="text-[13px] font-medium text-accent hover:underline">{invoice.number}</Link> : null}
+            <OrderActions
+              id={order.id}
+              status={order.status}
+              priority={order.priority}
+              onHold={order.onHold}
+              canSales={writable}
+              canFinance={can(session.role, "finance.write")}
+              canInvoice={canInvoice}
+              invoice={invoice ? { id: invoice.id, number: invoice.number, openCents, openInput: centsToInput(openCents) } : null}
+            />
           </>
         }
       />
-      <Banner error={one(query.error)} notice={one(query.notice)} />
+      <Banner error={one(query.error) ? tx(one(query.error)) : undefined} notice={one(query.notice) ? tx(one(query.notice)) : undefined} />
 
       {!cancelled ? (
         <ol className="mb-5 grid grid-cols-3 gap-y-3 rounded-xl bg-surface px-5 py-4 shadow-[var(--shadow)] sm:grid-cols-6">
@@ -158,7 +172,7 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
                 <InlineEdit entity="sales_order" id={order.id} field="notes" type="textarea" value={order.notes} disabled={!writable} placeholder={tx("Internal note")} />
               </div>
             </Panel>
-            {order.shipments.length || order.returns.length ? (
+            {order.shipments.length || order.returns.length || order.invoices.length || order.quotes.length ? (
               <Panel title={tx("Documents")} flush>
                 <ul className="pb-1">
                   {order.shipments.map((shipment) => (
@@ -169,14 +183,22 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
                       </Link>
                     </li>
                   ))}
-                  {invoice ? (
-                    <li>
-                      <Link href={`/invoices/${invoice.id}`} className="flex items-center justify-between gap-2 px-5 py-2 text-[13px] hover:bg-subtle">
-                        <span className="font-medium">{invoice.number}</span>
-                        <Status map={txMap(invoiceStatus, tx)} value={invoice.status} />
+                  {order.invoices.map((entry) => (
+                    <li key={entry.id}>
+                      <Link href={`/invoices/${entry.id}`} className="flex items-center justify-between gap-2 px-5 py-2 text-[13px] hover:bg-subtle">
+                        <span><span className="font-medium">{entry.number}</span><span className="ml-2 text-muted">{tx(invoiceKinds[entry.kind] ?? entry.kind)}</span></span>
+                        <Status map={txMap(invoiceStatus, tx)} value={entry.status} />
                       </Link>
                     </li>
-                  ) : null}
+                  ))}
+                  {order.quotes.map((entry) => (
+                    <li key={entry.id}>
+                      <Link href={`/quotes/${entry.id}`} className="flex items-center justify-between gap-2 px-5 py-2 text-[13px] hover:bg-subtle">
+                        <span className="font-medium">{entry.number}</span>
+                        <span className="text-muted">{tx("Quote")}</span>
+                      </Link>
+                    </li>
+                  ))}
                   {order.returns.map((entry) => (
                     <li key={entry.id}>
                       <Link href={`/returns/${entry.id}`} className="flex items-center justify-between gap-2 px-5 py-2 text-[13px] hover:bg-subtle">
@@ -202,7 +224,7 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
                   <span className="font-mono text-[12px] text-muted">{line.variant.sku}</span>
                   {line.variant.name && line.variant.name !== "Standard" ? <span className="ml-2 text-[12px] text-muted">{line.variant.name}</span> : null}
                 </span>
-                <span className="w-24 text-right text-muted tabular-nums">{money(line.unitPriceCents)} × {qty(line.quantity)}</span>
+                <span className="w-24 text-right text-muted tabular-nums">{money(line.unitPriceCents)} · {qty(line.quantity)}</span>
                 <span className="w-20 text-right text-[12px] tabular-nums">
                   {line.shippedQty >= line.quantity ? <span className="text-ok">{tx("shipped")}</span> : line.shippedQty > 0 ? <span className="text-warning">{tx("{shipped} of {quantity}", { shipped: line.shippedQty, quantity: line.quantity })}</span> : <span className="text-faint">{tx("not shipped")}</span>}
                 </span>
@@ -217,7 +239,7 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
           </dl>
         </Panel>
 
-        {fulfill && open ? (
+        {fulfill && open && !order.onHold ? (
           <Panel title={tx("Ship")} description={order.status === "partial" ? tx("Ships all lines that are still open.") : tx("Posts the goods issue and creates the shipment.")}>
             <form action={shipOrder} className="grid gap-2 sm:grid-cols-[150px_1fr_auto]">
               <input type="hidden" name="id" value={order.id} />
@@ -232,27 +254,16 @@ export default async function SalesOrderPage({ params, searchParams }: { params:
 
         <ActivityFeed entityType="sales_order" entityId={order.id} activities={extras.activities} canComment={can(session.role, "comments.write")} returnTo={`/sales-orders/${order.id}`} />
 
-        {(fulfill && shippedUnits > 0) || (writable && ["confirmed", "picking"].includes(order.status)) ? (
-          <Panel title={tx("More actions")}>
-            <div className="space-y-4">
-              {fulfill && shippedUnits > 0 ? (
-                <form action={openReturn} className="grid gap-2 sm:grid-cols-[1fr_160px_auto]">
-                  <input type="hidden" name="id" value={order.id} />
-                  <input name="reason" required placeholder={tx("Return reason, e.g. the size does not fit")} className={fieldClass} />
-                  <select name="disposition" className={fieldClass}>
-                    {Object.entries(dispositions).map(([key, label]) => <option key={key} value={key}>{tx(label)}</option>)}
-                  </select>
-                  <SubmitButton variant="secondary">{tx("Create return")}</SubmitButton>
-                </form>
-              ) : null}
-              {writable && ["confirmed", "picking"].includes(order.status) ? (
-                <form action={cancelOrder} className="flex items-center justify-between gap-3 border-t border-line pt-4 first:border-0 first:pt-0">
-                  <input type="hidden" name="id" value={order.id} />
-                  <span className="text-[13px] text-muted">{tx("Nothing has shipped yet. The order can be cancelled.")}</span>
-                  <SubmitButton variant="danger" size="sm">{tx("Cancel")}</SubmitButton>
-                </form>
-              ) : null}
-            </div>
+        {fulfill && shippedUnits > 0 ? (
+          <Panel title={tx("Return")}>
+            <form action={openReturn} className="grid gap-2 sm:grid-cols-[1fr_160px_auto]">
+              <input type="hidden" name="id" value={order.id} />
+              <input name="reason" required placeholder={tx("Return reason, e.g. the size does not fit")} className={fieldClass} />
+              <select name="disposition" className={fieldClass}>
+                {Object.entries(dispositions).map(([key, label]) => <option key={key} value={key}>{tx(label)}</option>)}
+              </select>
+              <SubmitButton variant="secondary">{tx("Create return")}</SubmitButton>
+            </form>
           </Panel>
         ) : null}
       </DetailLayout>

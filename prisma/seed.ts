@@ -88,6 +88,10 @@ async function main() {
       ["purchase_order", "PO-", 2041, 4],
       ["shipment", "SH-", 30021, 5],
       ["invoice", "INV-", 50101, 5],
+      ["invoice_cancellation", "ST-", 10001, 5],
+      ["credit", "RK-", 10001, 5],
+      ["credit_cancellation", "SK-", 10001, 5],
+      ["quote", "QT-", 10001, 5],
       ["return", "RT-", 1101, 4],
       ["journal", "JE-", 90021, 5],
     ].map(([key, prefix, nextNumber, padding]) => ({

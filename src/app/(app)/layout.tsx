@@ -15,7 +15,7 @@ function alreadyListed(title: string, body: string, href: string | null, live: s
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const session = await requireUser();
-  const [tx, locale, theme, notices, snapshot] = await Promise.all([
+  const [tx, locale, theme, notices, snapshot, assistant] = await Promise.all([
     translator(),
     getLocale(),
     getTheme(),
@@ -25,6 +25,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       take: 40,
     }),
     getSnapshot(session.organization.id),
+    prisma.organization.findUnique({ where: { id: session.organization.id }, select: { aiKeyCipher: true } }),
   ]);
   const hrefs = new Set(snapshot.problems.map((problem) => problem.href));
   const live = snapshot.problems.map((problem) => `${problem.title} ${problem.meta}`).join(" ");
@@ -38,6 +39,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       locale={locale}
       theme={theme}
       inboxCount={snapshot.problems.length + extra}
+      assistantReady={Boolean(assistant?.aiKeyCipher)}
     >
       {children}
     </AppShell>

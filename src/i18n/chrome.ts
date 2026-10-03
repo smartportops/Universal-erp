@@ -176,4 +176,10 @@ export const chrome: Record<string, string> = {
   "Message sent.": "Nachricht gesendet.",
   "Task added.": "Aufgabe angelegt.",
   "Sending": "Senden",
+  "Add a ChatGPT, Claude or Grok key": "Schlüssel für ChatGPT, Claude oder Grok hinterlegen",
+  "Add a model key to make changes": "Modellschlüssel hinterlegen, um Änderungen zu machen",
+  "Ask about this company, or drop in a supplier invoice and ask for a draft purchase order. Issued invoices are never overwritten.": "Frag dieses Unternehmen, oder leg eine Lieferantenrechnung dazu und bitte um eine Bestellung als Entwurf. Ausgestellte Rechnungen werden nie ueberschrieben.",
+  "File is larger than 8 MB.": "Die Datei ist größer als 8 MB.",
+  "This company only": "Nur dieses Unternehmen",
+  "Write a question or attach a file.": "Schreib eine Frage oder hänge eine Datei an.",
 };

@@ -18,6 +18,7 @@ import {
   LogOut,
   Menu,
   Package,
+  Paperclip,
   PanelLeft,
   Plus,
   Receipt,
@@ -87,6 +88,7 @@ export function AppShell({
   locale,
   theme,
   inboxCount,
+  assistantReady,
   children,
 }: {
   orgName: string;
@@ -95,6 +97,7 @@ export function AppShell({
   locale: Locale;
   theme: Theme;
   inboxCount: number;
+  assistantReady: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -314,7 +317,7 @@ export function AppShell({
           }}
         />
       ) : null}
-      {assistant ? <AssistantPanel onClose={() => setAssistant(false)} /> : null}
+      {assistant ? <AssistantPanel ready={assistantReady} onClose={() => setAssistant(false)} /> : null}
     </div>
   );
 }
@@ -512,12 +515,14 @@ const prompts = [
   "Summarize today's problems.",
 ];
 
-function AssistantPanel({ onClose }: { onClose: () => void }) {
+function AssistantPanel({ ready, onClose }: { ready: boolean; onClose: () => void }) {
   const tx = useTx();
   const [input, setInput] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
   const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string; answer?: AssistantAnswer }[]>([]);
   const end = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth" });
@@ -525,40 +530,49 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   async function send(text: string) {
     const message = text.trim();
-    if (!message || pending) return;
+    if ((!message && !file) || pending) return;
+    const attached = file;
     setInput("");
-    setMessages((current) => [...current, { role: "user", text: message }]);
+    setFile(null);
+    if (fileRef.current) fileRef.current.value = "";
+    setMessages((current) => [...current, { role: "user", text: attached ? `${message}${message ? "\n" : ""}${attached.name}` : message }]);
     setPending(true);
     try {
-      const answer = await askAssistant(message);
+      const body = new FormData();
+      body.set("message", message);
+      if (attached) body.set("file", attached);
+      const answer = await askAssistant(body);
       setMessages((current) => [...current, { role: "assistant", text: answer.body, answer }]);
+    } catch (error) {
+      setMessages((current) => [...current, { role: "assistant", text: error instanceof Error ? error.message : tx("Could not save.") }]);
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <aside className="fixed inset-y-2 right-2 z-40 flex w-[calc(100%-1rem)] max-w-[420px] flex-col overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-lg)]">
-      <header className="flex items-center justify-between px-4 py-3">
+    <aside className="fixed inset-y-2 right-2 z-40 flex w-[calc(100%-1rem)] max-w-[420px] flex-col overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-lg)] ring-1 ring-line">
+      <header className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-soft text-accent">
             <Sparkles size={14} />
           </span>
           <div>
             <div className="text-[13px] font-semibold">{tx("Assistant")}</div>
-            <div className="text-[12px] text-muted">{tx("Knows orders, stock and documents")}</div>
+            <div className="text-[12px] text-muted">{ready ? tx("This company only") : tx("Add a model key to make changes")}</div>
           </div>
         </div>
         <button onClick={onClose} aria-label={tx("Close")} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-ink/[0.04]">
           <X size={16} />
         </button>
       </header>
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4 pt-2">
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4 pt-3">
         {messages.length === 0 ? (
-          <div className="space-y-1.5 pt-2">
-            <p className="pb-2 text-[13px] leading-5 text-muted">{tx("Ask what matters operationally today. Answers come straight from orders, movements and invoices.")}</p>
+          <div className="space-y-1.5">
+            <p className="pb-2 text-[13px] leading-5 text-muted">{tx("Ask about this company, or drop in a supplier invoice and ask for a draft purchase order. Issued invoices are never overwritten.")}</p>
+            {!ready ? <Link href="/settings?section=assistant" onClick={onClose} className="block rounded-lg bg-soft px-3 py-2 text-[13px] font-medium text-accent">{tx("Add a ChatGPT, Claude or Grok key")}</Link> : null}
             {prompts.map((prompt) => (
-              <button key={tx(prompt)} className="block w-full rounded-lg px-3 py-2 text-left text-[13px] ring-1 ring-line hover:bg-subtle" onClick={() => void send(prompt)}>
+              <button key={prompt} className="block w-full rounded-lg px-3 py-2 text-left text-[13px] ring-1 ring-line hover:bg-subtle" onClick={() => void send(prompt)}>
                 {tx(prompt)}
               </button>
             ))}
@@ -566,12 +580,12 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
         ) : null}
         {messages.map((message, messageIndex) =>
           message.role === "user" ? (
-            <div key={messageIndex} className="ml-10 rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-[13px] text-primary-ink">
+            <div key={messageIndex} className="ml-10 whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-[13px] text-primary-ink">
               {message.text}
             </div>
           ) : (
             <div key={messageIndex} className="text-[13px] leading-6">
-              {message.answer ? <div className="mb-1 font-semibold">{message.answer.title}</div> : null}
+              {message.answer?.title ? <div className="mb-1 font-semibold">{message.answer.title}</div> : null}
               <div className="whitespace-pre-wrap text-ink">{message.text}</div>
               {message.answer?.links.length ? (
                 <div className="mt-2.5 overflow-hidden rounded-xl ring-1 ring-line">
@@ -593,15 +607,20 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
         <div ref={end} />
       </div>
       <form
-        className="p-3"
+        className="border-t border-line p-3"
         onSubmit={(event) => {
           event.preventDefault();
           void send(input);
         }}
       >
-        <div className="flex items-center gap-2 rounded-xl px-3 ring-1 ring-line-strong focus-within:ring-2 focus-within:ring-accent/40">
+        {file ? <div className="mb-2 flex items-center justify-between rounded-lg bg-subtle px-2.5 py-1.5 text-[12px]"><span className="truncate">{file.name}</span><button type="button" className="text-muted" onClick={() => setFile(null)} aria-label={tx("Remove")}>{"×"}</button></div> : null}
+        <div className="flex items-center gap-2 rounded-xl px-2 ring-1 ring-line-strong focus-within:ring-2 focus-within:ring-accent/40">
+          <input ref={fileRef} type="file" accept="application/pdf,image/*,.csv,.txt" className="hidden" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-ink/[0.04]" onClick={() => fileRef.current?.click()} aria-label={tx("Attach file")}>
+            <Paperclip size={15} />
+          </button>
           <input value={input} onChange={(event) => setInput(event.target.value)} placeholder={tx("Ask a question")} className="h-10 w-full bg-transparent text-[13px] outline-none placeholder:text-faint" />
-          <button type="submit" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-ink disabled:opacity-40" disabled={!input.trim() || pending} aria-label={tx("Send")}>
+          <button type="submit" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-ink disabled:opacity-40" disabled={(!input.trim() && !file) || pending} aria-label={tx("Send")}>
             <CornerDownLeft size={13} />
           </button>
         </div>

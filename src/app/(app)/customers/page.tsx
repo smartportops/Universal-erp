@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { money, one } from "@/lib/format";
+import { signedInvoiceNet } from "@/lib/invoices";
 import { customerTypes } from "@/lib/labels";
 import { getLocale, translator } from "@/lib/i18n-server";
 import { Filters } from "@/components/filters";
@@ -26,7 +27,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         ...(type ? { type } : {}),
         ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { company: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { code: { contains: q } }, { city: { contains: q, mode: "insensitive" } }] } : {}),
       },
-      include: { salesOrders: { select: { id: true } }, invoices: { select: { netCents: true, status: true } } },
+      include: { salesOrders: { select: { id: true } }, invoices: { select: { netCents: true, status: true, kind: true } } },
       orderBy: { name: "asc" },
     }),
     prisma.customer.findMany({ where: { organizationId: session.organization.id }, select: { type: true } }),
@@ -61,7 +62,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
               <span key="t" className="text-muted">{tx(customerTypes[customer.type] ?? customer.type)}</span>,
               <span key="c" className="text-muted">{customer.city || "—"}</span>,
               customer.salesOrders.length,
-              money(customer.invoices.filter((invoice) => invoice.status !== "void").reduce((sum, invoice) => sum + invoice.netCents, 0)),
+              money(customer.invoices.reduce((sum, invoice) => sum + signedInvoiceNet(invoice), 0)),
             ],
           }))}
           empty={{ title: tx("No customers found"), body: tx("The first customer takes ten seconds.") }}

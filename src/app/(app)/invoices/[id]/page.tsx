@@ -4,10 +4,12 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { centsToInput, dayKey, formatDay, money, one, qty, todayKey } from "@/lib/format";
-import { invoiceStatus, paymentMethods } from "@/lib/labels";
+import { invoiceKinds, invoiceStatus, paymentMethods } from "@/lib/labels";
 import { getLocale, translator } from "@/lib/i18n-server";
 import { txMap } from "@/lib/i18n";
-import { payInvoice } from "@/server/actions/finance";
+import { invoiceOpenAmount } from "@/lib/invoices";
+import { cancelCreditNote, cancelInvoice, correctInvoice, payInvoice } from "@/server/actions/finance";
+import { buttonClass } from "@/components/ui";
 import { entityExtras } from "@/server/entity";
 import { ActivityFeed, DetailLayout } from "@/components/entity-panel";
 import { Banner, PageIntro, Panel, Pill, Properties, Status, fieldClass } from "@/components/ui";
@@ -28,14 +30,17 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const query = await searchParams;
   const invoice = await prisma.invoice.findFirst({
     where: { id, organizationId: session.organization.id },
-    include: { customer: true, lines: true, payments: { orderBy: { paidAt: "desc" } }, salesOrder: true },
+    include: { customer: true, lines: true, payments: { orderBy: { paidAt: "desc" } }, salesOrder: true, corrects: true, correctedBy: { orderBy: { createdAt: "desc" } } },
   });
   if (!invoice) notFound();
   const extras = await entityExtras(session.organization.id, "invoice", invoice.id);
+  const credited = invoice.correctedBy.filter((entry) => entry.kind === "credit" && !["cancelled", "void"].includes(entry.status)).reduce((sum, entry) => sum + entry.totalCents, 0);
   const paid = invoice.payments.filter((payment) => payment.status === "settled").reduce((sum, payment) => sum + payment.amountCents, 0);
-  const open = ["issued", "partial"].includes(invoice.status) ? invoice.totalCents - paid : 0;
+  const open = invoiceOpenAmount(invoice, credited);
   const overdue = open > 0 && !!invoice.dueAt && dayKey(invoice.dueAt) < todayKey();
-  const canPay = can(session.role, "finance.write") && open > 0;
+  const finance = can(session.role, "finance.write");
+  const canPay = finance && open > 0;
+  const live = !["cancelled", "void"].includes(invoice.status);
   void locale;
 
   return (
@@ -46,12 +51,27 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         title={invoice.number}
         badges={
           <>
+            <Pill>{tx(invoiceKinds[invoice.kind] ?? invoice.kind)}</Pill>
             <Status map={txMap(invoiceStatus, tx)} value={invoice.status} />
             {overdue ? <Pill tone="danger">{tx("Overdue")}</Pill> : null}
           </>
         }
+        actions={
+          <>
+            <a className={buttonClass("secondary")} href={`/api/invoices/${invoice.id}/pdf`}>{tx("Download PDF")}</a>
+            {finance && live && invoice.kind === "invoice" ? (
+              <>
+                <form action={correctInvoice}><input type="hidden" name="id" value={invoice.id} /><SubmitButton variant="secondary">{tx("Create credit note")}</SubmitButton></form>
+                <form action={cancelInvoice}><input type="hidden" name="id" value={invoice.id} /><SubmitButton variant="danger">{tx("Create cancellation invoice")}</SubmitButton></form>
+              </>
+            ) : null}
+            {finance && live && invoice.kind === "credit" ? (
+              <form action={cancelCreditNote}><input type="hidden" name="id" value={invoice.id} /><SubmitButton variant="danger">{tx("Cancel credit note")}</SubmitButton></form>
+            ) : null}
+          </>
+        }
       />
-      <Banner error={one(query.error)} notice={one(query.notice)} />
+      <Banner error={one(query.error) ? tx(one(query.error)) : undefined} notice={one(query.notice) ? tx(one(query.notice)) : undefined} />
       <DetailLayout
         side={
           <Panel title={tx("Details")}>
@@ -59,6 +79,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               items={[
                 { label: tx("Customer"), value: <Link href={`/customers/${invoice.customerId}`} className="hover:underline">{invoice.customer.name}</Link> },
                 { label: tx("Order"), value: invoice.salesOrder ? <Link href={`/sales-orders/${invoice.salesOrderId}`} className="hover:underline">{invoice.salesOrder.number}</Link> : "—" },
+                { label: tx("Refers to"), value: invoice.corrects ? <Link href={`/invoices/${invoice.correctsId}`} className="hover:underline">{invoice.corrects.number}</Link> : "—", hidden: !invoice.corrects },
+                { label: tx("Follow-ups"), value: invoice.correctedBy.length ? <span className="flex flex-col">{invoice.correctedBy.map((entry) => <Link key={entry.id} href={`/invoices/${entry.id}`} className="hover:underline">{entry.number}</Link>)}</span> : "—", hidden: invoice.correctedBy.length === 0 },
                 { label: tx("Issued"), value: formatDay(invoice.issuedAt) },
                 { label: tx("Due"), value: <span className={overdue ? "font-medium text-danger" : ""}>{formatDay(invoice.dueAt)}</span> },
                 { label: tx("Paid"), value: money(paid) },
