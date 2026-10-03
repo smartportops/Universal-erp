@@ -18,6 +18,8 @@ export default defineConfig({
       alias: { "@": resolve(__dirname, "src/renderer"), "@shared": resolve(__dirname, "src/shared") },
     },
     plugins: [react(), tailwindcss()],
+    // Inline PostCSS config so Vite does not pick up the ERP's postcss.config.mjs one level up.
+    css: { postcss: { plugins: [] } },
     build: {
       outDir: "out/renderer",
       rollupOptions: { input: resolve(__dirname, "src/renderer/index.html") },
