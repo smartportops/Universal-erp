@@ -51,8 +51,6 @@ jobs:
 
       - name: Build installers
         run: npm run ${{ matrix.script }} -- --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -89,6 +87,10 @@ jobs:
 
             - **Windows:** `Aera-WMS-Setup-*.exe` (SmartScreen: "More info" -> "Run anyway")
             - **macOS Apple Silicon:** `*-mac-arm64.dmg`
-            - **macOS Intel:** `*-mac-x64.dmg` (first start: right-click -> Open)
+            - **macOS Intel:** `*-mac-x64.dmg`
+
+            macOS: the app is ad-hoc signed, not notarized. If macOS refuses to open it, run
+            `xattr -cr "/Applications/Aera WMS.app"` in Terminal once, or allow it under
+            System Settings -> Privacy & Security -> "Open Anyway".
 
             The app starts with demo data. Connect it to your ERP under Settings -> Connection with an API key.

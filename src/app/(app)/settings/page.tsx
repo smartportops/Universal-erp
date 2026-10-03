@@ -450,7 +450,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <Panel title={tx("Installation notes")}>
               <ul className="list-disc space-y-1.5 pl-5 text-[13px] text-muted">
                 <li>{tx("Windows: SmartScreen may warn because the installer is not code-signed yet. Choose “More info” → “Run anyway”.")}</li>
-                <li>{tx("macOS: open the DMG, drag Aera WMS to Applications. On first start right-click the app and choose “Open” to bypass Gatekeeper.")}</li>
+                <li>{tx("macOS: open the DMG and drag Aera WMS to Applications. The app is not notarized yet – if macOS reports it as “damaged” or refuses to open it, run this once in Terminal:")} <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-[12px] text-ink">xattr -cr &quot;/Applications/Aera WMS.app&quot;</code> {tx("or allow it under System Settings → Privacy & Security → “Open Anyway”.")}</li>
                 <li>{tx("The app starts with demo data. Connect it to this ERP under WMS → Settings → Connection with an API key from Settings → API.")}</li>
               </ul>
             </Panel>

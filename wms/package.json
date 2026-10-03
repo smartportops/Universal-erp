@@ -1,7 +1,7 @@
 {
   "name": "aera-wms",
   "productName": "Aera WMS",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Aera Warehouse Management System � touch-first desktop client for the Aera ERP",
   "private": true,
   "main": "./out/main/index.js",
@@ -61,7 +61,7 @@
           ]
         }
       ],
-      "identity": null,
+      "identity": "-",
       "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
