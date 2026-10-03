@@ -22,14 +22,12 @@ import { record } from "../src/server/domain/platform";
 const passwordText = "aera-beta";
 
 async function wipe() {
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
-  const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_prisma_migrations'",
+  const tables = await prisma.$queryRawUnsafe<{ tablename: string }[]>(
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'",
   );
-  for (const table of tables) {
-    await prisma.$executeRawUnsafe(`DELETE FROM "${table.name}"`);
-  }
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  if (!tables.length) return;
+  const list = tables.map((table) => `"${table.tablename}"`).join(", ");
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
 }
 
 async function main() {

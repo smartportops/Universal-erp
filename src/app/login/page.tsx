@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { one } from "@/lib/format";
@@ -27,6 +28,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const step = one(query.step);
   const error = one(query.error);
   const notice = one(query.notice);
+  const showDemo = process.env.AERA_DEMO === "1";
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-bg px-6 py-16">
       <div className="w-full max-w-[380px]">
@@ -48,26 +50,34 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           ) : (
             <form action={login} className="space-y-4">
               <Field label={tx("Email")}>
-                <input name="email" type="email" autoComplete="username" required defaultValue="mia.berg@heller.demo" className={fieldClass} />
+                <input name="email" type="email" autoComplete="username" required autoFocus defaultValue={showDemo ? "mia.berg@heller.demo" : undefined} className={fieldClass} />
               </Field>
               <Field label={tx("Password")}>
-                <input name="password" type="password" autoComplete="current-password" required defaultValue="aera-beta" className={fieldClass} />
+                <input name="password" type="password" autoComplete="current-password" required defaultValue={showDemo ? "aera-beta" : undefined} className={fieldClass} />
               </Field>
               <SubmitButton pendingLabel="Signing in..." className="w-full">{tx("Sign in")}</SubmitButton>
             </form>
           )}
         </div>
-        <div className="mt-6 text-[12px] text-muted">
-          <div className="mb-1.5 font-medium text-ink">{tx("Demo accounts · password aera-beta")}</div>
-          <ul className="space-y-0.5">
-            {demo.map(([email, role]) => (
-              <li key={email} className="flex justify-between">
-                <span className="font-mono">{email}</span>
-                <span className="text-faint">{tx(role)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p className="mt-6 text-[12px] text-muted">
+          {tx("New here?")}{" "}
+          <Link href="/signup" className="font-medium text-ink underline-offset-2 hover:underline">
+            {tx("Create your company")}
+          </Link>
+        </p>
+        {showDemo ? (
+          <div className="mt-6 text-[12px] text-muted">
+            <div className="mb-1.5 font-medium text-ink">{tx("Demo accounts · password aera-beta")}</div>
+            <ul className="space-y-0.5">
+              {demo.map(([email, role]) => (
+                <li key={email} className="flex justify-between">
+                  <span className="font-mono">{email}</span>
+                  <span className="text-faint">{tx(role)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </main>
   );
