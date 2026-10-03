@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { Apple, Download, FileText, Monitor } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can, grantsFor, permissionLabels, permissions, roleLabels, roles } from "@/lib/permissions";
@@ -7,6 +7,8 @@ import { cn, formatDay, formatWhen, one } from "@/lib/format";
 import { documentKinds } from "@/lib/labels";
 import { entityHref } from "@/lib/nav";
 import { saveAssistant } from "@/server/actions/assistant-settings";
+import { createPickProfile, deletePickProfile } from "@/server/actions/wms";
+import { formatBytes, latestWmsRelease, WMS_REPO } from "@/server/wms/releases";
 import {
   addCustomField,
   addTax,
@@ -32,6 +34,7 @@ const sections: { group: string; items: [string, string][] }[] = [
   { group: "Company", items: [["company", "General"], ["users", "Team"], ["roles", "Roles"]] },
   { group: "Business operations", items: [["taxes", "Taxes"], ["sequences", "Number sequences"], ["fields", "Custom fields"]] },
   { group: "Data", items: [["integrations", "Integrations"], ["webhooks", "Webhooks"], ["api", "API"], ["assistant", "Assistant"], ["import", "Import"]] },
+  { group: "Warehouse", items: [["wms", "WMS"], ["downloads", "Downloads"]] },
   { group: "History", items: [["documents", "Documents"], ["activities", "Activities"]] },
   { group: "Account", items: [["security", "Security"]] },
 ];
@@ -78,6 +81,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     section === "activities" && tab === "audit"
       ? prisma.auditLog.findMany({ where: { organizationId: orgId }, include: { actor: true }, orderBy: { createdAt: "desc" }, take: 100 })
       : Promise.resolve([]),
+  ]);
+  const [pickProfiles, channels, release] = await Promise.all([
+    section === "wms" ? prisma.pickProfile.findMany({ where: { organizationId: orgId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }) : Promise.resolve([]),
+    section === "wms" ? prisma.salesOrder.findMany({ where: { organizationId: orgId }, distinct: ["channel"], select: { channel: true } }) : Promise.resolve([]),
+    section === "downloads" ? latestWmsRelease() : Promise.resolve(null),
   ]);
   const admin = can(session.role, "settings.write");
   const title = sections.flatMap((group) => group.items).find(([key]) => key === section)?.[1] ?? "Settings";
@@ -335,6 +343,117 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </ul>
               </Panel>
             ) : null}
+          </div>
+        ) : null}
+
+        {section === "wms" ? (
+          <div className="space-y-5">
+            <Panel title={tx("Pick profiles")} description={tx("A profile decides which open orders a picking run pulls from the ERP and how many at once. The WMS lists them under Pick lists → New pick list.")} flush>
+              {pickProfiles.length === 0 ? <EmptyState title={tx("No pick profiles yet")} body={tx("Create one below – for example “Shop · single-line orders” with 20 orders per list.")} /> : null}
+              <ul>
+                {pickProfiles.map((profile) => (
+                  <li key={profile.id} className="flex items-center justify-between gap-4 border-t border-line px-5 py-2.5 text-[13px]">
+                    <div className="min-w-0">
+                      <div className="font-medium">{profile.name}</div>
+                      <div className="text-[12px] text-muted">
+                        {profile.channel ? `${tx("Channel")}: ${profile.channel} · ` : `${tx("Any channel")} · `}
+                        {profile.customerType ? `${profile.customerType.toUpperCase()} · ` : ""}
+                        {tx("max. {n} orders", { n: profile.maxOrders })}
+                        {profile.maxLines ? ` · ${tx("max. {n} lines", { n: profile.maxLines })}` : ""} · {profile.carrier}
+                      </div>
+                    </div>
+                    {admin ? (
+                      <form action={deletePickProfile}>
+                        <input type="hidden" name="id" value={profile.id} />
+                        <SubmitButton variant="ghost" size="sm">{tx("Delete")}</SubmitButton>
+                      </form>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {admin ? (
+                <form action={createPickProfile} className="grid grid-cols-2 gap-3 border-t border-line bg-subtle px-5 py-4 md:grid-cols-3">
+                  <div className="md:col-span-3"><Field label={tx("Name")}><input name="name" required placeholder={tx("e.g. Shop · single-line orders")} className={fieldClass} /></Field></div>
+                  <Field label={tx("Channel")}>
+                    <select name="channel" className={fieldClass}>
+                      <option value="">{tx("Any channel")}</option>
+                      {channels.map((c) => <option key={c.channel} value={c.channel}>{c.channel}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={tx("Customer type")}>
+                    <select name="customerType" className={fieldClass}>
+                      <option value="">{tx("Any")}</option>
+                      <option value="b2c">B2C</option>
+                      <option value="b2b">B2B</option>
+                    </select>
+                  </Field>
+                  <Field label={tx("Carrier")}><input name="carrier" defaultValue="DHL" className={fieldClass} /></Field>
+                  <Field label={tx("Orders per list")}><input name="maxOrders" type="number" min={1} max={500} defaultValue={20} className={fieldClass} /></Field>
+                  <Field label={tx("Max. lines per order")} hint={tx("0 = any")}><input name="maxLines" type="number" min={0} max={100} defaultValue={0} className={fieldClass} /></Field>
+                  <div className="flex items-end"><SubmitButton>{tx("Create profile")}</SubmitButton></div>
+                </form>
+              ) : null}
+            </Panel>
+            <Panel title={tx("Connecting a WMS station")}>
+              <ol className="list-decimal space-y-1.5 pl-5 text-[13px] text-muted">
+                <li>{tx("Install Aera WMS from the Downloads section.")}</li>
+                <li>{tx("Create an API key under Settings → API and copy it.")}</li>
+                <li>{tx("In the WMS open Settings → Connection, switch off demo data, enter this server URL and the key, then test the connection.")}</li>
+              </ol>
+            </Panel>
+          </div>
+        ) : null}
+
+        {section === "downloads" ? (
+          <div className="space-y-5">
+            <Panel title={tx("Aera WMS for the warehouse")} description={tx("Touch-first desktop app for goods receipt, picking, Fast Ship, returns and stock tasks. Works with any barcode scanner.")}>
+              {release ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
+                    <Pill tone="info">{tx("Version")} {release.version}</Pill>
+                    {release.publishedAt ? <span>{tx("Published")} {formatDay(release.publishedAt)}</span> : null}
+                    <a href={release.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{tx("Release notes")}</a>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {([
+                      ["windows", "Windows", tx("Installer (.exe), 64-bit"), Monitor],
+                      ["mac-arm64", "macOS", tx("Apple Silicon (.dmg)"), Apple],
+                      ["mac-x64", "macOS", tx("Intel (.dmg)"), Apple],
+                    ] as const).map(([platform, title, subtitle, Icon]) => {
+                      const asset = release.assets.find((a) => a.platform === platform);
+                      return (
+                        <a
+                          key={platform}
+                          href={asset?.url}
+                          aria-disabled={!asset}
+                          className={cn("flex items-center gap-3 rounded-xl border border-line p-4 transition-colors", asset ? "hover:bg-subtle" : "pointer-events-none opacity-50")}
+                        >
+                          <Icon className="size-6 shrink-0 text-muted" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-medium">{title}</div>
+                            <div className="truncate text-[12px] text-muted">{subtitle}{asset ? ` · ${formatBytes(asset.sizeBytes)}` : ` · ${tx("not available")}`}</div>
+                          </div>
+                          <Download className="size-4 shrink-0 text-muted" />
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <EmptyState
+                  title={tx("No build published yet")}
+                  body={tx("Builds are created automatically when a WMS release is tagged. Check the releases page or try again in a few minutes.")}
+                  action={<a href={`https://github.com/${WMS_REPO}/releases`} target="_blank" rel="noreferrer" className="text-[13px] font-medium underline-offset-2 hover:underline">{tx("Open releases page")}</a>}
+                />
+              )}
+            </Panel>
+            <Panel title={tx("Installation notes")}>
+              <ul className="list-disc space-y-1.5 pl-5 text-[13px] text-muted">
+                <li>{tx("Windows: SmartScreen may warn because the installer is not code-signed yet. Choose “More info” → “Run anyway”.")}</li>
+                <li>{tx("macOS: open the DMG, drag Aera WMS to Applications. On first start right-click the app and choose “Open” to bypass Gatekeeper.")}</li>
+                <li>{tx("The app starts with demo data. Connect it to this ERP under WMS → Settings → Connection with an API key from Settings → API.")}</li>
+              </ul>
+            </Panel>
           </div>
         ) : null}
 

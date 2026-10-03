@@ -107,7 +107,14 @@ export async function markPurchaseOrdered(db: PrismaClient, input: Actor & { pur
   });
 }
 
-export async function receivePurchaseOrder(db: PrismaClient, input: Actor & { purchaseOrderId: string }) {
+export async function receivePurchaseOrder(
+  db: PrismaClient,
+  input: Actor & {
+    purchaseOrderId: string;
+    /** variantId -> quantity for a partial receipt; omitted = receive everything outstanding */
+    quantities?: Record<string, number>;
+  },
+) {
   return db.$transaction(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id: input.purchaseOrderId, organizationId: input.organizationId },
@@ -121,21 +128,26 @@ export async function receivePurchaseOrder(db: PrismaClient, input: Actor & { pu
     const at = input.at ?? new Date();
     let cost = 0;
     let any = false;
+    let complete = true;
     for (const line of order.lines) {
       const remaining = line.quantity - line.receivedQty;
       if (remaining <= 0) continue;
+      const requested = input.quantities ? Math.floor(input.quantities[line.variantId] ?? 0) : remaining;
+      if (requested > remaining) throw new Error("Mehr als bestellt.");
+      if (requested < remaining) complete = false;
+      if (requested <= 0) continue;
       any = true;
-      cost += remaining * line.unitCostCents;
+      cost += requested * line.unitCostCents;
       await tx.purchaseOrderLine.update({
         where: { id: line.id },
-        data: { receivedQty: { increment: remaining } },
+        data: { receivedQty: { increment: requested } },
       });
       await writeMovement(tx, {
         organizationId: input.organizationId,
         variantId: line.variantId,
         warehouseId: order.warehouseId,
         locationId: location.id,
-        quantity: remaining,
+        quantity: requested,
         type: "receipt",
         referenceType: "purchase_order",
         referenceId: order.id,
@@ -146,7 +158,7 @@ export async function receivePurchaseOrder(db: PrismaClient, input: Actor & { pu
       });
     }
     if (!any) throw new Error("Nichts mehr einzubuchen.");
-    await tx.purchaseOrder.update({ where: { id: order.id }, data: { status: "received" } });
+    await tx.purchaseOrder.update({ where: { id: order.id }, data: { status: complete ? "received" : "partial" } });
     await bookInventoryReceipt(tx, {
       organizationId: input.organizationId,
       actorId: input.actorId,
@@ -161,7 +173,7 @@ export async function receivePurchaseOrder(db: PrismaClient, input: Actor & { pu
       type: "purchase_order.received",
       entityType: "purchase_order",
       entityId: order.id,
-      summary: `${order.number} vollständig eingebucht`,
+      summary: complete ? `${order.number} vollständig eingebucht` : `${order.number} teilweise eingebucht`,
       at,
     });
     await addDocument(tx, {

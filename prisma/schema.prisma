@@ -68,6 +68,7 @@ model Organization {
   accounts                Account[]
   journalEntries          JournalEntry[]
   vouchers                Voucher[]
+  pickProfiles            PickProfile[]
   serialNumbers           SerialNumber[]
   documents               Document[]
 }
@@ -932,3 +933,20 @@ model Voucher {
   @@index([organizationId, issuedAt])
 }
 
+/// WMS pick-list profile: which open orders a picking run pulls and how many.
+model PickProfile {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  channel        String   @default("")
+  customerType   String   @default("")
+  maxOrders      Int      @default(20)
+  maxLines       Int      @default(0)
+  carrier        String   @default("DHL")
+  sortOrder      Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}

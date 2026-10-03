@@ -1,0 +1,94 @@
+name: WMS release
+
+# Builds the desktop WMS for Windows and macOS and publishes the installers
+# as a GitHub release. Trigger by pushing a tag like `wms-v0.1.0`
+# (or manually via "Run workflow").
+on:
+  push:
+    tags: ["wms-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: wms
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          - os: macos-latest
+            script: dist:mac
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: wms/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Ensure Electron binary is present
+        shell: bash
+        run: |
+          if [ ! -d node_modules/electron/dist ]; then
+            (cd node_modules/electron && node install.js)
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build installers
+        run: npm run ${{ matrix.script }} -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wms-${{ matrix.os }}
+          path: |
+            wms/release/*.exe
+            wms/release/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/wms-v')
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Aera WMS ${{ github.ref_name }}
+          files: artifacts/*
+          generate_release_notes: true
+          body: |
+            Desktop WMS for the Aera ERP.
+
+            - **Windows:** `Aera-WMS-Setup-*.exe` (SmartScreen: "More info" -> "Run anyway")
+            - **macOS Apple Silicon:** `*-mac-arm64.dmg`
+            - **macOS Intel:** `*-mac-x64.dmg` (first start: right-click -> Open)
+
+            The app starts with demo data. Connect it to your ERP under Settings -> Connection with an API key.

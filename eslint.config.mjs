@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Desktop WMS has its own toolchain.
+    "wms/**",
   ]),
 ]);
 
